@@ -1,0 +1,642 @@
+{
+  "generated_by": "cli-device bundle build jubilee",
+  "device_id": "jubilee",
+  "display_name": "Jubilee Multi-Tool Motion Platform",
+  "device_kind": "motion_platform",
+  "version": "1.0.0",
+  "review_status": "hand_authored_v1_fixture",
+  "targets": {
+    "duet_real": {
+      "adapter_id": "duet_rrf",
+      "is_real_hardware": true,
+      "default_endpoint": "http://192.168.1.2",
+      "capabilities": [
+        "abort_m112",
+        "abort_oob",
+        "axes_xyz",
+        "axes_xyzu",
+        "deck_labware",
+        "expert_gcode",
+        "rrf_object_model",
+        "tool_lock_u"
+      ],
+      "require_confirm_for_risks": [
+        "R2_MOTION",
+        "R3_PHYSICAL_INIT",
+        "R4_EXPERT"
+      ]
+    },
+    "mujoco_twin": {
+      "adapter_id": "mujoco_twin",
+      "is_real_hardware": false,
+      "default_endpoint": "mujoco://local",
+      "capabilities": [
+        "abort_oob",
+        "axes_xyz",
+        "axes_xyzu",
+        "collision_proxy",
+        "deck_labware",
+        "tool_lock_u"
+      ],
+      "require_confirm_for_risks": [
+        "R3_PHYSICAL_INIT",
+        "R4_EXPERT"
+      ]
+    },
+    "grbl_sim": {
+      "adapter_id": "grbl_sim",
+      "is_real_hardware": false,
+      "default_endpoint": "tcp://127.0.0.1:2323",
+      "capabilities": [
+        "abort_oob",
+        "axes_xyz",
+        "serial_gcode"
+      ],
+      "require_confirm_for_risks": [
+        "R3_PHYSICAL_INIT",
+        "R4_EXPERT"
+      ]
+    },
+    "in_memory": {
+      "adapter_id": "in_memory",
+      "is_real_hardware": false,
+      "default_endpoint": "memory://jubilee-fake",
+      "capabilities": [
+        "abort_oob",
+        "axes_xyz",
+        "axes_xyzu",
+        "deck_labware",
+        "expert_gcode",
+        "rrf_object_model",
+        "tool_lock_u"
+      ],
+      "require_confirm_for_risks": [
+        "R3_PHYSICAL_INIT",
+        "R4_EXPERT"
+      ]
+    }
+  },
+  "services": [
+    {
+      "name": "sys.detect",
+      "cli_group": "sys",
+      "cli_command": "detect",
+      "summary": "Probe controller/simulator, discover API dialect and firmware, and verify connection.",
+      "returns_summary": "endpoint, api_mode, firmware",
+      "risk_class": "R0_READ",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [],
+      "timeout_s": 5.0,
+      "args": []
+    },
+    {
+      "name": "sys.status",
+      "cli_group": "sys",
+      "cli_command": "status",
+      "summary": "Poll canonical machine state (position, homed axes, active tool, safe Z, e-stop latch).",
+      "returns_summary": "pos, homed, tool, safe_z",
+      "risk_class": "R0_READ",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [],
+      "timeout_s": 5.0,
+      "args": []
+    },
+    {
+      "name": "sys.preflight",
+      "cli_group": "sys",
+      "cli_command": "preflight",
+      "summary": "Run read-only readiness checks (connection, firmware dialect, e-stop latch, tool sensor).",
+      "returns_summary": "readiness_report",
+      "risk_class": "R0_READ",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [],
+      "timeout_s": 5.0,
+      "args": []
+    },
+    {
+      "name": "sys.abort",
+      "cli_group": "sys",
+      "cli_command": "abort",
+      "summary": "Out-of-band lock-free emergency stop (sends M112 on Duet/RRF; latches HALTED).",
+      "returns_summary": "ESTOP_LATCHED",
+      "risk_class": "R0_READ",
+      "requires_confirm": false,
+      "bypasses_action_lock": true,
+      "expert_only": false,
+      "requires_capabilities": [],
+      "timeout_s": 2.0,
+      "args": []
+    },
+    {
+      "name": "sys.reset_estop",
+      "cli_group": "sys",
+      "cli_command": "reset-estop",
+      "summary": "Clear latched e-stop after physical inspection (e.g. M999); requires re-homing afterward.",
+      "returns_summary": "lifecycle=IDLE, homed=[]",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [],
+      "timeout_s": 10.0,
+      "args": []
+    },
+    {
+      "name": "deck.load_deck",
+      "cli_group": "deck",
+      "cli_command": "load-deck",
+      "summary": "Load declarative deck geometry and slot map into the runtime.",
+      "returns_summary": "slots, safe_z",
+      "risk_class": "R1_CONFIG",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "deck_labware"
+      ],
+      "timeout_s": 5.0,
+      "args": [
+        {
+          "name": "spec",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Deck definition filename or identifier."
+        }
+      ]
+    },
+    {
+      "name": "deck.load_labware",
+      "cli_group": "deck",
+      "cli_command": "load-labware",
+      "summary": "Register labware geometry (e.g. 96-well plate) into a deck slot.",
+      "returns_summary": "well_map, top_z",
+      "risk_class": "R1_CONFIG",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "deck_labware"
+      ],
+      "timeout_s": 5.0,
+      "args": [
+        {
+          "name": "slot",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Deck slot identifier (e.g. 1)."
+        },
+        {
+          "name": "spec",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Labware definition file or spec name (e.g. corning_96_wellplate.json)."
+        },
+        {
+          "name": "top_z_mm",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 250.0,
+          "default": 20.0,
+          "description": "Top height of labware above bed in mm."
+        }
+      ]
+    },
+    {
+      "name": "deck.safe_z",
+      "cli_group": "deck",
+      "cli_command": "safe-z",
+      "summary": "Set safe Z clearance height (rejected if below tallest labware + active tool + margin).",
+      "returns_summary": "safe_z",
+      "risk_class": "R1_CONFIG",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 5.0,
+      "args": [
+        {
+          "name": "z_mm",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Requested safe Z height in mm."
+        }
+      ]
+    },
+    {
+      "name": "motion.home_all",
+      "cli_group": "motion",
+      "cli_command": "home-all",
+      "summary": "Home all supported machine axes (requires operator confirmation that deck is clear).",
+      "returns_summary": "homed=[X,Y,Z,U]",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 90.0,
+      "args": []
+    },
+    {
+      "name": "motion.home_xyu",
+      "cli_group": "motion",
+      "cli_command": "home-xyu",
+      "summary": "Home X, Y, and U axes (requires Z at/above safe Z and no tool mounted).",
+      "returns_summary": "homed+=[X,Y,U]",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyzu"
+      ],
+      "timeout_s": 60.0,
+      "args": []
+    },
+    {
+      "name": "motion.home_z",
+      "cli_group": "motion",
+      "cli_command": "home-z",
+      "summary": "Home Z axis (requires human --confirm that deck is clear; tool parked recommended).",
+      "returns_summary": "homed+=[Z]",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 60.0,
+      "args": []
+    },
+    {
+      "name": "motion.move_safe",
+      "cli_group": "motion",
+      "cli_command": "move-safe",
+      "summary": "Retract to safe Z, translate XY, then descend to optional Z (requires homed axes).",
+      "returns_summary": "pos=(x,y,z)",
+      "risk_class": "R2_MOTION",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 30.0,
+      "args": [
+        {
+          "name": "x",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Target X coordinate in mm."
+        },
+        {
+          "name": "y",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Target Y coordinate in mm."
+        },
+        {
+          "name": "z",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Optional final Z coordinate in mm (defaults to current/safe Z)."
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "required": false,
+          "unit": "mm/min",
+          "min_value": 60.0,
+          "max_value": 12000.0,
+          "default": null,
+          "description": "Optional travel speed in mm/min."
+        }
+      ]
+    },
+    {
+      "name": "motion.move_to",
+      "cli_group": "motion",
+      "cli_command": "move-to",
+      "summary": "Direct linear XYZ move constrained by safe Z when crossing deck XY.",
+      "returns_summary": "pos=(x,y,z)",
+      "risk_class": "R2_MOTION",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 30.0,
+      "args": [
+        {
+          "name": "x",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Target X coordinate in mm."
+        },
+        {
+          "name": "y",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Target Y coordinate in mm."
+        },
+        {
+          "name": "z",
+          "type": "float",
+          "required": true,
+          "unit": "mm",
+          "min_value": 0.0,
+          "max_value": 300.0,
+          "default": null,
+          "description": "Target Z coordinate in mm."
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "required": false,
+          "unit": "mm/min",
+          "min_value": 60.0,
+          "max_value": 12000.0,
+          "default": null,
+          "description": "Optional travel speed in mm/min."
+        }
+      ]
+    },
+    {
+      "name": "motion.move_rel",
+      "cli_group": "motion",
+      "cli_command": "move-rel",
+      "summary": "Bounded relative XYZ offset move.",
+      "returns_summary": "pos=(x+dx,y+dy,z+dz)",
+      "risk_class": "R2_MOTION",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz"
+      ],
+      "timeout_s": 30.0,
+      "args": [
+        {
+          "name": "dx",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": -100.0,
+          "max_value": 100.0,
+          "default": 0.0,
+          "description": "Relative X offset in mm."
+        },
+        {
+          "name": "dy",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": -100.0,
+          "max_value": 100.0,
+          "default": 0.0,
+          "description": "Relative Y offset in mm."
+        },
+        {
+          "name": "dz",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": -100.0,
+          "max_value": 100.0,
+          "default": 0.0,
+          "description": "Relative Z offset in mm."
+        },
+        {
+          "name": "speed",
+          "type": "float",
+          "required": false,
+          "unit": "mm/min",
+          "min_value": 60.0,
+          "max_value": 6000.0,
+          "default": null,
+          "description": "Optional travel speed in mm/min."
+        }
+      ]
+    },
+    {
+      "name": "motion.move_well",
+      "cli_group": "motion",
+      "cli_command": "move-well",
+      "summary": "Move via safe Z to a named labware well with optional vertical clearance offset dz.",
+      "returns_summary": "pos=well(slot,well)+dz",
+      "risk_class": "R2_MOTION",
+      "requires_confirm": false,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyz",
+        "deck_labware"
+      ],
+      "timeout_s": 30.0,
+      "args": [
+        {
+          "name": "slot",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Deck slot containing loaded labware."
+        },
+        {
+          "name": "well",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Well name (e.g. A1)."
+        },
+        {
+          "name": "dz",
+          "type": "float",
+          "required": false,
+          "unit": "mm",
+          "min_value": -20.0,
+          "max_value": 150.0,
+          "default": 5.0,
+          "description": "Vertical offset above labware top Z in mm."
+        }
+      ]
+    },
+    {
+      "name": "tool.pickup",
+      "cli_group": "tool",
+      "cli_command": "pickup",
+      "summary": "Pick up a parked tool via RRF tool-change macros (requires carriage empty and homed).",
+      "returns_summary": "active_tool=tool_id",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyzu",
+        "tool_lock_u"
+      ],
+      "timeout_s": 45.0,
+      "args": [
+        {
+          "name": "tool_id",
+          "type": "int",
+          "required": true,
+          "unit": null,
+          "min_value": 0.0,
+          "max_value": 9.0,
+          "default": null,
+          "description": "Tool index to pick up (e.g. 0)."
+        }
+      ]
+    },
+    {
+      "name": "tool.park",
+      "cli_group": "tool",
+      "cli_command": "park",
+      "summary": "Park the currently mounted tool into its dock (requires a tool currently mounted).",
+      "returns_summary": "active_tool=null",
+      "risk_class": "R3_PHYSICAL_INIT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": false,
+      "requires_capabilities": [
+        "axes_xyzu",
+        "tool_lock_u"
+      ],
+      "timeout_s": 45.0,
+      "args": []
+    },
+    {
+      "name": "expert.gcode",
+      "cli_group": "expert",
+      "cli_command": "gcode",
+      "summary": "Expert escape hatch: send a raw G-code line directly (requires --confirm).",
+      "returns_summary": "raw_reply",
+      "risk_class": "R4_EXPERT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": true,
+      "requires_capabilities": [
+        "expert_gcode"
+      ],
+      "timeout_s": 30.0,
+      "args": [
+        {
+          "name": "command",
+          "type": "string",
+          "required": true,
+          "unit": null,
+          "min_value": null,
+          "max_value": null,
+          "default": null,
+          "description": "Single G-code line."
+        }
+      ]
+    },
+    {
+      "name": "expert.tool_lock",
+      "cli_group": "expert",
+      "cli_command": "tool-lock",
+      "summary": "Expert escape hatch: actuate U-axis tool lock directly (requires --confirm).",
+      "returns_summary": "tool_locked=true",
+      "risk_class": "R4_EXPERT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": true,
+      "requires_capabilities": [
+        "axes_xyzu",
+        "tool_lock_u"
+      ],
+      "timeout_s": 15.0,
+      "args": []
+    },
+    {
+      "name": "expert.tool_unlock",
+      "cli_group": "expert",
+      "cli_command": "tool-unlock",
+      "summary": "Expert escape hatch: actuate U-axis tool unlock directly (DANGER: never over deck/labware).",
+      "returns_summary": "tool_locked=false",
+      "risk_class": "R4_EXPERT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": true,
+      "requires_capabilities": [
+        "axes_xyzu",
+        "tool_lock_u"
+      ],
+      "timeout_s": 15.0,
+      "args": []
+    },
+    {
+      "name": "expert.home_u",
+      "cli_group": "expert",
+      "cli_command": "home-u",
+      "summary": "Expert escape hatch: home U tool-lock axis independently (requires --confirm).",
+      "returns_summary": "homed+=[U]",
+      "risk_class": "R4_EXPERT",
+      "requires_confirm": true,
+      "bypasses_action_lock": false,
+      "expert_only": true,
+      "requires_capabilities": [
+        "axes_xyzu",
+        "tool_lock_u"
+      ],
+      "timeout_s": 30.0,
+      "args": []
+    }
+  ]
+}

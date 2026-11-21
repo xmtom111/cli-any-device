@@ -158,6 +158,6 @@ def test_validator_rejects_hardcoded_default_password(tmp_path: Path) -> None:
     (bad_dir / "catalog.yaml").write_text(
         (JUBILEE_BUNDLE_DIR / "catalog.yaml").read_text(encoding="utf-8"), encoding="utf-8"
     )
-    bundle = load_bundle(bad_dir)
     with pytest.raises(BundleValidationError):
+        bundle = load_bundle(bad_dir)
         validate_bundle(bundle)
