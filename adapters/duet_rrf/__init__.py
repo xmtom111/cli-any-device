@@ -114,6 +114,7 @@ class DuetAdapter:
         if self._supervisor is None:
             state = CanonicalMachineState(
                 lifecycle=MachineLifecycle.DISCONNECTED,
+                detected=self._identity is not None,
                 identity=self._identity,
             )
         else:
@@ -209,7 +210,7 @@ class DuetAdapter:
     def apply_fail_safe(self, policy: str, reason: str) -> str:
         if policy == "none":
             return "none"
-        if policy not in {"abort_m112", "retract_safe_z_or_halt"}:
+        if policy not in {"adapter_abort", "abort_m112", "retract_safe_z_or_halt"}:
             raise UnsupportedCapabilityError(f"Duet cannot apply fail-safe {policy}")
         result = self.abort_now()
         if not result.sent:

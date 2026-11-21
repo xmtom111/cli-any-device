@@ -375,7 +375,7 @@ class TwinAdapter:
     def apply_fail_safe(self, policy: str, reason: str) -> str:
         if policy == "none":
             return "none"
-        if policy not in {"abort_m112", "retract_safe_z_or_halt"}:
+        if policy not in {"adapter_abort", "abort_m112", "retract_safe_z_or_halt"}:
             raise UnsupportedCapabilityError(f"MuJoCo cannot apply fail-safe {policy}")
         self.abort_now()
         return "MuJoCo trajectory halted"

@@ -155,8 +155,13 @@ def test_no_live_motion_by_default():
 
 def test_no_endpoint_is_offline():
     adapter = DuetAdapter()
-    assert adapter.detect().details["offline"]
-    assert adapter.poll_state().lifecycle == MachineLifecycle.DISCONNECTED
+    assert not adapter.poll_state().detected
+    identity = adapter.detect()
+    assert identity.details["offline"]
+    state = adapter.poll_state()
+    assert state.detected
+    assert state.identity == identity
+    assert state.lifecycle == MachineLifecycle.DISCONNECTED
     assert not adapter.preflight().passed
     with pytest.raises(AdapterTransportError, match="completion barrier"):
         adapter.await_settled(0.1)
