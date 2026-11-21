@@ -16,25 +16,112 @@ from typing import Any
 import yaml
 
 RANGE_RE = re.compile(
-    r"([A-Za-z][A-Za-z0-9 _/-]{1,32}):\s*"
-    r"(-?\d+(?:\.\d+)?)\s*(?:to|-)\s*(-?\d+(?:\.\d+)?)\s*([A-Za-z/%]+)?",
+    r"([A-Za-z][A-Za-z0-9 _/-]{1,40}):\s*"
+    r"(-?\d+(?:\.\d+)?)\s*(?:to|-|–)\s*(-?\d+(?:\.\d+)?)\s*([A-Za-z/%]+)?",
     re.IGNORECASE,
 )
+
+_STOP_TOKENS = frozenset(
+    {
+        "range",
+        "limit",
+        "limits",
+        "operating",
+        "receive",
+        "transmit",
+        "output",
+        "input",
+        "audio",
+        "axis",
+        "travel",
+        "max",
+        "min",
+        "target",
+        "allowed",
+        "probe",
+        "setpoint",
+    }
+)
+
+_TOKEN_ALIASES: dict[str, set[str]] = {
+    "frequency": {"freq", "frequency"},
+    "freq": {"freq", "frequency"},
+    "volume": {"vol", "volume"},
+    "vol": {"vol", "volume"},
+    "power": {"pwr", "power", "tx"},
+    "voltage": {"volt", "voltage", "v"},
+    "current": {"curr", "current", "amp", "amps", "a"},
+    "temperature": {"temp", "temperature"},
+    "spindle": {"spindle", "rpm"},
+    "feed": {"feed", "speed"},
+    "speed": {"feed", "speed", "rpm"},
+    "channel": {"ch", "chan", "channel"},
+}
+
+_UNIT_ALIASES: dict[str, set[str]] = {
+    "mhz": {"mhz"},
+    "khz": {"khz"},
+    "hz": {"hz"},
+    "db": {"db"},
+    "dbm": {"dbm"},
+    "w": {"w", "watt", "watts"},
+    "mw": {"mw"},
+    "v": {"v", "volt", "volts"},
+    "a": {"a", "amp", "amps"},
+    "ma": {"ma"},
+    "mm": {"mm"},
+    "rpm": {"rpm"},
+    "mm/min": {"feed", "speed", "mm_min"},
+    "c": {"c", "degc"},
+}
+
+_OUTPUT_DEVICE_KINDS = frozenset(
+    {"radio", "instrument", "psu", "power_supply", "sensor", "probe", "transceiver"}
+)
+
+
+def _is_rrf_interface(interface_type: str) -> bool:
+    low = interface_type.lower()
+    return "rrf" in low or "duet" in low
+
+
+def _default_fail_safe(
+    *,
+    interface_type: str,
+    device_kind: str,
+    risk_class: str,
+) -> str:
+    if risk_class in ("R0_READ", "R1_CONFIG"):
+        return "none"
+    if _is_rrf_interface(interface_type):
+        return "abort_m112" if risk_class in ("R3_PHYSICAL_INIT", "R4_EXPERT") else "halt_motion"
+    if device_kind.lower() in _OUTPUT_DEVICE_KINDS:
+        return "disable_output" if risk_class == "R2_MOTION" else "adapter_abort"
+    return "adapter_abort"
 
 
 def _classify_method(name: str, doc: str) -> tuple[str, str, bool, bool]:
     """Return (group_override_or_empty, risk_class, requires_confirm, expert_only)."""
     low = name.lower()
     doc_low = doc.lower()
-    if any(tok in low for tok in ("raw", "gcode", "send_cmd", "send_at", "unlock")):
+    if any(tok in low for tok in ("raw", "gcode", "scpi", "send_cmd", "send_at", "unlock")):
         return ("expert", "R4_EXPERT", True, True)
     if any(tok in low for tok in ("home", "calibrate", "init", "pickup", "park", "reset")):
         return ("", "R3_PHYSICAL_INIT", True, False)
     if any(
         tok in low
-        for tok in ("move", "goto", "transmit", "enable_tx", "actuate", "start", "dispense")
+        for tok in (
+            "move",
+            "goto",
+            "transmit",
+            "enable_tx",
+            "enable_output",
+            "actuate",
+            "start",
+            "dispense",
+        )
     ):
-        needs_confirm = "confirm" in doc_low or "tx" in low
+        needs_confirm = "confirm" in doc_low or "tx" in low or "enable_output" in low
         return ("", "R2_MOTION", needs_confirm, False)
     if any(tok in low for tok in ("get_", "read_", "status", "detect", "poll", "info", "list_")):
         return ("", "R0_READ", False, False)
@@ -70,10 +157,26 @@ def _literal_default(node: ast.expr | None) -> Any:
     return None
 
 
+def _iter_signature_params(fn: ast.FunctionDef) -> list[tuple[ast.arg, ast.expr | None]]:
+    """Return all positional-only, positional-or-keyword, and keyword-only params in order."""
+    positional = [*fn.args.posonlyargs, *fn.args.args]
+    if positional and positional[0].arg in ("self", "cls"):
+        positional = positional[1:]
+    pos_defaults: list[ast.expr | None] = [None] * (
+        len(positional) - len(fn.args.defaults)
+    ) + list(fn.args.defaults)
+    params = list(zip(positional, pos_defaults, strict=True))
+    params.extend(zip(fn.args.kwonlyargs, fn.args.kw_defaults, strict=True))
+    return params
+
+
 def _extract_host_api_services(
     host_api_paths: Sequence[Path],
     default_group: str,
     primary_capability: str,
+    *,
+    interface_type: str,
+    device_kind: str,
 ) -> list[dict[str, Any]]:
     services: list[dict[str, Any]] = []
     seen_names: set[str] = set()
@@ -100,13 +203,8 @@ def _extract_host_api_services(
                 continue
             seen_names.add(svc_name)
 
-            fn_args = [a for a in fn.args.args if a.arg != "self"]
-            defaults_pad: list[ast.expr | None] = [None] * (
-                len(fn_args) - len(fn.args.defaults)
-            ) + list(fn.args.defaults)
-
             parsed_args: list[dict[str, Any]] = []
-            for arg_node, def_node in zip(fn_args, defaults_pad, strict=True):
+            for arg_node, def_node in _iter_signature_params(fn):
                 def_val = _literal_default(def_node)
                 arg_type = _annotation_to_arg_type(arg_node.annotation, def_val)
                 arg_entry: dict[str, Any] = {
@@ -122,7 +220,11 @@ def _extract_host_api_services(
             req_caps = ["expert_raw"] if expert_only else [primary_capability]
             preconditions = ["detected", "not_estop_latched"]
             postconditions = ["idle"] if risk_class != "R0_READ" else []
-            fail_safe = "abort_m112" if risk_class in ("R3_PHYSICAL_INIT", "R4_EXPERT") else "none"
+            fail_safe = _default_fail_safe(
+                interface_type=interface_type,
+                device_kind=device_kind,
+                risk_class=risk_class,
+            )
 
             services.append(
                 {
@@ -162,7 +264,7 @@ def _extract_manual_hints(
             low = line.lower()
             if any(k in low for k in ("never", "mandatory", "warning", "physical", "do not")):
                 warnings.append(line)
-            wiring_keywords = ("serial", "baud", "ethernet", "ip", "connect", "port", "usb")
+            wiring_keywords = ("serial", "baud", "ethernet", "ip", "connect", "port", "usb", "scpi")
             if any(k in low for k in wiring_keywords):
                 wiring_notes.append(line)
             match = RANGE_RE.search(line)
@@ -180,7 +282,86 @@ def _extract_manual_hints(
     return warnings, limits, wiring_notes
 
 
-def _base_system_services() -> list[dict[str, Any]]:
+def _expand_tokens(slug: str) -> set[str]:
+    raw_tokens = [tok for tok in slug.lower().split("_") if tok]
+    expanded: set[str] = set()
+    for tok in raw_tokens:
+        if tok in _STOP_TOKENS:
+            continue
+        expanded.add(tok)
+        expanded.update(_TOKEN_ALIASES.get(tok, ()))
+    return expanded
+
+
+def _score_limit_to_arg(raw_slug: str, unit: str, arg_name: str) -> int:
+    if raw_slug == arg_name:
+        return 100
+    raw_tokens = _expand_tokens(raw_slug)
+    arg_tokens = {tok for tok in arg_name.lower().split("_") if tok}
+    arg_expanded: set[str] = set()
+    for tok in arg_tokens:
+        arg_expanded.add(tok)
+        arg_expanded.update(_TOKEN_ALIASES.get(tok, ()))
+
+    overlap = raw_tokens & arg_expanded
+    if not overlap:
+        return 0
+    score = len(overlap) * 3
+    unit_low = unit.lower().strip()
+    if unit_low:
+        unit_tokens = _UNIT_ALIASES.get(unit_low, {unit_low})
+        if unit_tokens & arg_expanded:
+            score += 2
+    return score
+
+
+def _bind_limits_to_service_args(
+    raw_limits: dict[str, dict[str, Any]],
+    services: list[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Bind extracted manual range keys to matching runtime service parameter names."""
+    numeric_arg_names: list[str] = []
+    seen_args: set[str] = set()
+    for svc in services:
+        for arg in svc.get("args", []):
+            if arg.get("type") in ("float", "int") and arg["name"] not in seen_args:
+                seen_args.add(arg["name"])
+                numeric_arg_names.append(arg["name"])
+
+    bound: dict[str, dict[str, Any]] = {}
+    for raw_slug, entry in raw_limits.items():
+        unit = str(entry.get("unit", ""))
+        best_arg: str | None = None
+        best_score = 0
+        tied = False
+        for arg_name in numeric_arg_names:
+            score = _score_limit_to_arg(raw_slug, unit, arg_name)
+            if score > best_score:
+                best_score = score
+                best_arg = arg_name
+                tied = False
+            elif score == best_score and score > 0:
+                tied = True
+
+        use_arg = best_arg is not None and best_score >= 3 and not tied
+        target_key = best_arg if use_arg and best_arg is not None else raw_slug
+        bound[target_key] = dict(entry)
+
+    # Propagate bound numeric limits onto matching service arg declarations as well
+    for svc in services:
+        for arg in svc.get("args", []):
+            name = arg.get("name")
+            if arg.get("type") in ("float", "int") and name in bound:
+                lim = bound[name]
+                arg.setdefault("min_value", lim["min_value"])
+                arg.setdefault("max_value", lim["max_value"])
+                if lim.get("unit") and not arg.get("unit"):
+                    arg["unit"] = lim["unit"]
+
+    return bound
+
+
+def _base_system_services(*, reset_fail_safe: str) -> list[dict[str, Any]]:
     return [
         {
             "name": "sys.detect",
@@ -256,7 +437,7 @@ def _base_system_services() -> list[dict[str, Any]]:
             "preconditions": ["detected"],
             "effects": ["clears_estop_latch"],
             "postconditions": ["not_estop_latched"],
-            "fail_safe": "abort_m112",
+            "fail_safe": reset_fail_safe,
             "timeout_s": 10.0,
             "requires_confirm": True,
             "bypasses_action_lock": False,
@@ -281,8 +462,21 @@ def draft_bundle(
     default_group = re.sub(r"[^a-z0-9_]+", "_", device_kind.lower()).strip("_") or clean_id
     primary_cap = f"{default_group}_control"
 
-    warnings, limits, wiring_notes = _extract_manual_hints(manual_paths)
-    extracted_services = _extract_host_api_services(host_api_paths, default_group, primary_cap)
+    warnings, raw_limits, wiring_notes = _extract_manual_hints(manual_paths)
+    extracted_services = _extract_host_api_services(
+        host_api_paths,
+        default_group,
+        primary_cap,
+        interface_type=interface_type,
+        device_kind=device_kind,
+    )
+    limits = _bind_limits_to_service_args(raw_limits, extracted_services)
+
+    reset_fail_safe = _default_fail_safe(
+        interface_type=interface_type,
+        device_kind=device_kind,
+        risk_class="R3_PHYSICAL_INIT",
+    )
 
     all_caps = [primary_cap, "abort_oob", "expert_raw"]
     prohibitions = warnings or [
@@ -315,8 +509,9 @@ def draft_bundle(
             "default_endpoint": endpoint,
             "fallback_interface": "Diagnostic read-only console (review before production).",
             "completion_semantics": (
-                "Adapter MUST wait for device acknowledgement/idle state via "
-                "SupervisorChannel.await_settled() before returning exit code 0."
+                "Hardware/simulator adapters MUST wait for device acknowledgement/idle state via "
+                "SupervisorChannel.await_settled() before returning exit code 0; the built-in "
+                "`in_memory` target simulates state in memory with no physical actuation."
             ),
             "estop_policy": (
                 "Software `cli-device sys abort` runs lock-free out-of-band. A physical "
@@ -382,7 +577,7 @@ def draft_bundle(
     catalog_doc: dict[str, Any] = {
         "device_id": clean_id,
         "version": "0.1.0-draft",
-        "services": [*_base_system_services(), *extracted_services],
+        "services": [*_base_system_services(reset_fail_safe=reset_fail_safe), *extracted_services],
     }
 
     output_dir.mkdir(parents=True, exist_ok=True)

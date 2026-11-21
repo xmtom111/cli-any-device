@@ -402,7 +402,7 @@ class InMemoryFakeAdapter:
 
     def apply_fail_safe(self, policy: str, reason: str) -> str:
         self.fail_safe_calls.append((policy, reason))
-        if policy in ("abort_m112", "abort_now", "cut_output"):
+        if policy in ("abort_m112", "abort_now", "adapter_abort", "safe_halt", "cut_output"):
             self.abort_now()
             return f"{policy} applied ({reason})"
         with self._state_lock:
@@ -411,7 +411,7 @@ class InMemoryFakeAdapter:
             props = dict(self._state.properties)
             if policy == "retract_safe_z_or_halt" and pos.z is not None and pos.z < safe_z:
                 pos = Position(x=pos.x, y=pos.y, z=safe_z, u=pos.u, extra=dict(pos.extra))
-            elif policy == "disable_output":
+            elif policy in ("disable_output", "halt_motion"):
                 props["output_enabled"] = False
                 props["tx_enabled"] = False
             self._state = CanonicalMachineState(

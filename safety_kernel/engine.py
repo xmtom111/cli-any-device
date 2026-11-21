@@ -105,6 +105,29 @@ class SafetyKernel:
             )
 
         if service.bypasses_action_lock:
+            if dry_run:
+                state = self._safe_poll()
+                abort_plan: dict[str, Any] = {
+                    "service": service.name,
+                    "risk_class": service.risk_class.value,
+                    "args": raw_args,
+                    "bypasses_action_lock": True,
+                    "effects": list(service.effects),
+                    "postconditions": list(service.postconditions),
+                    "requires_confirm_when_live": False,
+                    "timeout_s": service.timeout_s,
+                }
+                return CommandEnvelope(
+                    ok=True,
+                    service=service.name,
+                    target=self._target_name,
+                    mode=ExecutionMode.DRY_RUN,
+                    duration_ms=self._elapsed_ms(t0),
+                    exit_code=ExitCode.OK,
+                    state=state.to_summary_dict(),
+                    data={"plan": abort_plan},
+                    error=None,
+                )
             return self._handle_lock_free_abort(service, mode, t0)
 
         try:

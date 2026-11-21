@@ -24,6 +24,11 @@ dev = [
 cli-device = "cli.main:main"
 cli-device-d = "daemon.main:main"
 
+[project.entry-points."cli_any_device.adapters"]
+duet_rrf = "adapters.duet_rrf:create_adapter"
+mujoco_twin = "adapters.mujoco_twin:create_adapter"
+grbl_sim = "adapters.grbl_sim:create_adapter"
+
 [tool.hatch.build.targets.wheel]
 packages = [
     "core_types",
@@ -32,6 +37,7 @@ packages = [
     "safety_kernel",
     "daemon",
     "cli",
+    "adapters",
 ]
 
 [tool.mypy]
