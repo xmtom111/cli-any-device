@@ -312,6 +312,13 @@ class DynamicDeviceCLI(click.Group):
         bundle_param = ctx.params.get("bundle")
         if isinstance(bundle_param, str) and bundle_param:
             return bundle_param
+        # Support `cli-device --bundle <name> --help` where --help fires eagerly
+        argv = sys.argv[1:]
+        for idx, tok in enumerate(argv):
+            if tok == "--bundle" and idx + 1 < len(argv):
+                return argv[idx + 1]
+            if tok.startswith("--bundle="):
+                return tok.split("=", 1)[1]
         env_bundle = os.environ.get("CLI_DEVICE_BUNDLE")
         if env_bundle:
             return env_bundle
