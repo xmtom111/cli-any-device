@@ -95,8 +95,7 @@ def test_completion_requires_barrier_execution_and_idle(dialect):
         channel.idle.set()
         state = result.result(timeout=1)
     assert state["homed"] == {"X"}
-    assert not state["active_tool"]
-    assert state["tool_locked"] is None
+    assert state["active_tool"] is None
 
 
 def test_standalone_immediate_idle_without_barrier_reply_times_out():

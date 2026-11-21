@@ -122,8 +122,6 @@ class RrfSupervisor:
             },
             "homed": {axis["letter"] for axis in axes if axis.get("homed") is True},
             "active_tool": tool if type(tool) is int and tool >= 0 else None,
-            "tool_known": type(tool) is int and tool >= -1,
-            "tool_locked": None,
         }
 
     def detect(self):
@@ -139,12 +137,10 @@ class RrfSupervisor:
         self._session = session
         board = next((item for item in boards if item), {})
         return {
-            "target": "duet_real",
             "endpoint": self.endpoint,
             "api_mode": session[0],
             "firmware": board.get("firmwareVersion"),
             "board": board.get("name"),
-            "capabilities": {"rrf_object_model"},
         }
 
     def poll_state(self):

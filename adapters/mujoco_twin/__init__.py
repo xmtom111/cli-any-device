@@ -43,15 +43,14 @@ def _load_autodna(root):
     sys.path.insert(0, str(root))
     sys.dont_write_bytecode = True
     try:
+        modules = []
         for name in ("common", "sim.model", "sim.twin"):
             module = import_module(name)
             if not Path(module.__file__).resolve().is_relative_to(root):
                 raise ImportError(f"{name} is already resolved outside AutoDNA: {root}")
-        from common import config, tube_xy
-        from sim.model import pose
-        from sim.twin import DigitalTwin
-
-        return (config, tube_xy, pose, DigitalTwin)
+            modules.append(module)
+        common, model, twin = modules
+        return common.config, common.tube_xy, model.pose, twin.DigitalTwin
     finally:
         sys.dont_write_bytecode = write_setting
         sys.path.pop(0)

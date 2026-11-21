@@ -45,14 +45,14 @@ def _load_autodna(root):
     sys.path.insert(0, str(root))
     sys.dont_write_bytecode = True
     try:
+        modules = []
         for name in ("common", "grbl_emulator.controller"):
             module = import_module(name)
             if not Path(module.__file__).resolve().is_relative_to(root):
                 raise ImportError(f"{name} is already resolved outside AutoDNA: {root}")
-        from common import config
-        from grbl_emulator.controller import Controller
-
-        return (config, Controller)
+            modules.append(module)
+        common, controller = modules
+        return common.config, controller.Controller
     finally:
         sys.dont_write_bytecode = write_setting
         sys.path.pop(0)

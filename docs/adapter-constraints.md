@@ -22,7 +22,7 @@ AutoDNA 的队列深度、超时、进给、行程与管架示教点属于实验
 
 ## 本地运行与验收
 
-适配器使用公共 `adapter_spi` 的 `AdapterConfig`、`AdapterPair`、`ActionRequest` 和标准遥测类型。每个适配器子目录可独立安装，注册 `cli_any_device.adapters` 下的同名入口。也可将各目录的 `create_adapter` 工厂直接注入守护进程。CLI 的 dry-run、确认门和动作后置条件在共享运行时执行。
+每个适配器可独立安装并注册 `cli_any_device.adapters` 入口，也可以注入 `create_adapter` 工厂。
 
 - MuJoCo 和 GRBL 默认读取 `/workspace/autodna_sim_a`。可用工厂选项 `autodna_root` 或环境变量 `CLI_ANY_DEVICE_AUTODNA_ROOT` 指定源目录。同一进程使用同一份 AutoDNA checkout。
 - MuJoCo 默认装载模型中固定的 `autodna_deck` 和 1 槽的 `autodna_rack`，含 96 个坐标。加载命令可重新登记相同布局。孔位 Z 偏移以模型的管口平面为零，台面以上的管高单独报告。动作沿路径以最多 1 mm 的间隔采样代理接触，工具 0 的附着与 U 轴锁为逻辑状态。
@@ -30,10 +30,10 @@ AutoDNA 的队列深度、超时、进给、行程与管架示教点属于实验
 - Duet 工厂在具备实际 endpoint 和显式密码时连接。密码取本机工厂配置或 `CLI_ANY_DEVICE_DUET_PASSWORD`。未配置时报告离线。配置后提供只读检测、预检和状态，以及显式请求的独立 M112。M400 监督接口用于确认运动屏障。独立模式通过 HTTP M118 唯一标记核实屏障回复，再读取 idle。当前 ActionDriver 拒绝物理动作和软件复位。安装 Duet 插件的 `rehearsal` 可选依赖后，可用工厂选项 `vendor_rehearsal=true` 创建离线适配器，经 SPI 排练绝对 XYZ，结果只含厂商生成的帧。
 - M112 在本地模拟或 HTTP 测试夹具上验证，现场传输时限、宏、锁传感器和动力切断由真机验收覆盖。
 
-在本仓库根目录运行适配器合规测试。可用 AutoDNA 的既有 Python 环境提供 MuJoCo 和 pytest。若未安装可选的 science-jubilee，只有厂商排练用例会跳过。
+在仓库根目录用项目 venv 运行。厂商排练用例需要安装可选的 science-jubilee。
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 /workspace/autodna_sim_a/.venv/bin/python \
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python \
   -m pytest -p no:cacheprovider tests/adapter_compliance
 ```
 
