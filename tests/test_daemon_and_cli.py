@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import json
+import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from adapter_spi import AdapterConfig, AdapterPair, InMemoryFakeAdapter
 from cli.main import build_cli_app
 from compiler.loader import load_bundle
 from core_types import ExitCode
-from daemon.ipc import DaemonIPCServer
+from daemon.ipc import DaemonIPCClient, DaemonIPCServer
 from daemon.registry import AdapterRegistry
 from daemon.service import DeviceDaemon
 
@@ -272,3 +275,59 @@ def test_help_surfaces_exact_product_slogan() -> None:
     assert daemon_help.exit_code == 0
     assert "Let AI drive all your devices" in cli_help.output
     assert "Let AI drive all your devices" in daemon_help.output
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
+def test_cli_device_d_exits_cleanly_and_unlinks_socket_on_signal(
+    tmp_path: Path, sig: signal.Signals
+) -> None:
+    """Real subprocess regression test: SIGTERM/SIGINT must stop cli-device-d within ~1s."""
+    socket_path = tmp_path / f"daemon-{sig.name.lower()}.sock"
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "daemon.main",
+            "--bundle",
+            str(JUBILEE_BUNDLE_DIR),
+            "--socket",
+            str(socket_path),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        # Wait until the Unix socket is created AND actually serving IPC requests.
+        deadline = time.monotonic() + 5.0
+        ready = False
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                out, err = proc.communicate(timeout=2.0)
+                raise AssertionError(f"cli-device-d exited early ({proc.returncode}): {out}{err}")
+            if socket_path.exists():
+                resp = DaemonIPCClient(socket_path, timeout_s=1.0).call(
+                    target="in_memory", service="sys.status"
+                )
+                if resp.get("ok") is True:
+                    ready = True
+                    break
+            time.sleep(0.02)
+        assert ready, "cli-device-d did not become ready on socket within 5s"
+
+        t0 = time.monotonic()
+        proc.send_signal(sig)
+        rc = proc.wait(timeout=1.5)
+        elapsed = time.monotonic() - t0
+
+        assert rc == 0, f"Expected clean exit 0 on {sig.name}, got {rc}"
+        assert elapsed < 1.0, f"Shutdown on {sig.name} took {elapsed:.3f}s (expected < 1.0s)"
+        assert not socket_path.exists(), f"Stale socket not removed: {socket_path}"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=2.0)
+        if proc.stdout is not None:
+            proc.stdout.close()
+        if proc.stderr is not None:
+            proc.stderr.close()

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import signal
+import sys
+import threading
 from pathlib import Path
 
 import click
@@ -58,20 +60,33 @@ def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
         endpoint_overrides=_parse_endpoint_overrides(endpoints),
     )
     server = DaemonIPCServer(socket_path=Path(socket_path), daemon=daemon)
+    stop_event = threading.Event()
 
     def _handle_sig(_signum: int, _frame: object) -> None:
-        server.shutdown()
+        stop_event.set()
 
-    signal.signal(signal.SIGINT, _handle_sig)
-    signal.signal(signal.SIGTERM, _handle_sig)
+    prev_int = signal.signal(signal.SIGINT, _handle_sig)
+    prev_term = signal.signal(signal.SIGTERM, _handle_sig)
+    serve_thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": 0.05},
+        daemon=True,
+    )
+    serve_thread.start()
     click.echo(
         f"cli-device-d listening on {socket_path} "
         f"(bundle={loaded.device.device_id} v{loaded.device.version})"
     )
+    sys.stdout.flush()
     try:
-        server.serve_forever()
+        while serve_thread.is_alive() and not stop_event.is_set():
+            stop_event.wait(timeout=0.1)
     finally:
+        server.shutdown()
+        serve_thread.join(timeout=2.0)
         server.server_close()
+        signal.signal(signal.SIGINT, prev_int)
+        signal.signal(signal.SIGTERM, prev_term)
 
 
 if __name__ == "__main__":
