@@ -356,7 +356,7 @@ def build_cli_app() -> click.Group:
     @click.group(
         cls=DynamicDeviceCLI,
         name="cli-device",
-        help="CLI-Any-Device: turn any open-source machine into a safe, AI-callable CLI.",
+        help="Let AI drive all your devices — schema-driven safety CLI.",
     )
     @click.option(
         "--bundle",

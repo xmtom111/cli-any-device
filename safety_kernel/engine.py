@@ -104,11 +104,9 @@ class SafetyKernel:
                 ),
             )
 
-        # Lock-free out-of-band path (e.g. sys.abort -> M112 / realtime stop)
         if service.bypasses_action_lock:
             return self._handle_lock_free_abort(service, mode, t0)
 
-        # Step 1: Argument validation & device safety limits
         try:
             coerced_args = validate_and_coerce_args(service, raw_args, self._bundle.device)
         except GateRejection as rej:
@@ -121,7 +119,6 @@ class SafetyKernel:
                 error=ErrorDetail(code=rej.code, step=rej.step, reason=rej.reason),
             )
 
-        # Step 2: Honest capability check (profile & live driver intersection)
         effective_caps = self._profile.capabilities & self._driver.capabilities()
         missing_caps = service.requires_capabilities - effective_caps
         if missing_caps:
@@ -141,7 +138,6 @@ class SafetyKernel:
                 ),
             )
 
-        # Step 3: Poll current state & enforce e-stop latch
         state = self._safe_poll()
         if state.estop_latched and service.name not in ESTOP_ALLOWED_SERVICES:
             return self._error_envelope(
@@ -160,7 +156,6 @@ class SafetyKernel:
                 ),
             )
 
-        # Step 4: Resolve spatial coordinates (if any) & evaluate preconditions
         target_coords = resolve_target_coords(service, coerced_args, state)
         try:
             evaluate_preconditions(service, coerced_args, state, self._bundle.device, target_coords)
@@ -174,7 +169,6 @@ class SafetyKernel:
                 error=ErrorDetail(code=rej.code, step=rej.step, reason=rej.reason),
             )
 
-        # Step 5: --dry-run (zero driver calls, zero state mutation)
         needs_confirm = self._needs_confirmation(service, state)
         if dry_run:
             plan = {
@@ -199,7 +193,6 @@ class SafetyKernel:
                 error=None,
             )
 
-        # Step 6: --confirm gate
         if needs_confirm and not confirm:
             return self._error_envelope(
                 service_name=service.name,
@@ -217,7 +210,6 @@ class SafetyKernel:
                 ),
             )
 
-        # Step 7: Serialized live execution + mandatory completion barrier + postcondition check
         with self._action_lock:
             return self._execute_locked(service, coerced_args, target_coords, t0)
 

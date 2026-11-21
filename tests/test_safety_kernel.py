@@ -292,3 +292,17 @@ def test_safety_kernel_enforces_rules_on_drafted_open_radio(tmp_path: Path) -> N
     assert (
         kernel.invoke("expert.send_raw_at", args={"command": "AT+INFO"}, confirm=True).ok is True
     )
+
+
+def test_unverified_hookup_allows_readonly_preflight_but_blocks_actuation() -> None:
+    fake = InMemoryFakeAdapter(target="duet_real", is_real_hardware=True, hookup_verified=False)
+    kernel, _ = _make_jubilee_kernel(target="duet_real", adapter=fake)
+
+    assert kernel.invoke("sys.detect").ok is True
+    assert kernel.invoke("sys.preflight").ok is True
+
+    denied = kernel.invoke("motion.home_all", confirm=True)
+    assert denied.ok is False
+    assert denied.exit_code == ExitCode.SAFETY_DENIED
+    assert denied.error is not None and denied.error.code == ErrorCode.E_NOT_DETECTED
+    assert fake.executed_requests == []

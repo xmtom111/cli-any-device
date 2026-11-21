@@ -99,6 +99,8 @@ class InMemoryFakeAdapter:
         initial_safe_z_mm: float | None = 120.0,
         fail_postcondition_on_service: str | None = None,
         deadlock_event: threading.Event | None = None,
+        action_started_event: threading.Event | None = None,
+        hookup_verified: bool = True,
         custom_handlers: dict[str, CustomHandler] | None = None,
     ) -> None:
         self.target = target
@@ -113,6 +115,8 @@ class InMemoryFakeAdapter:
         self._verify_tool_on_detect = verify_tool_on_detect
         self.fail_postcondition_on_service = fail_postcondition_on_service
         self.deadlock_event = deadlock_event
+        self.action_started_event = action_started_event
+        self._hookup_verified = hookup_verified
         self._custom_handlers = dict(custom_handlers or {})
 
         # Separate locks: _action_lock serializes execute(); _abort_event is lock-free.
@@ -172,7 +176,7 @@ class InMemoryFakeAdapter:
             board="InMemoryFakeBoard",
             capabilities=self._capabilities,
             is_real_hardware=self._is_real_hardware,
-            hookup_verified=True,
+            hookup_verified=self._hookup_verified,
             details={"completion_barrier": "settled+idle"},
         )
         with self._state_lock:
@@ -365,6 +369,8 @@ class InMemoryFakeAdapter:
 
         with self._action_lock:
             self.executed_requests.append(request)
+            if self.action_started_event is not None:
+                self.action_started_event.set()
             if self.deadlock_event is not None:
                 self.deadlock_event.wait(timeout=request.timeout_s)
                 if self._abort_event.is_set():

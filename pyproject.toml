@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "cli-any-device"
 version = "0.1.0"
-description = "Generic toolkit to turn any open-source machine (interface + manual/host API) into a safe, AI-callable CLI"
+description = "Let AI drive all your devices — turn any open-source hardware into a safe, AI-callable CLI"
 requires-python = ">=3.11"
 dependencies = [
     "PyYAML>=6.0",

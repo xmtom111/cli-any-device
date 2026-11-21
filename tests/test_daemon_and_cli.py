@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
-import time
 from pathlib import Path
 
 from click.testing import CliRunner
@@ -103,9 +104,14 @@ def test_daemon_ipc_and_cli_closed_loop_jubilee_workflow(tmp_path: Path) -> None
 def test_concurrent_ipc_abort_unblocks_deadlocked_action(tmp_path: Path) -> None:
     socket_path = tmp_path / "abort.sock"
     deadlock = threading.Event()
-    fake = InMemoryFakeAdapter(target="in_memory", deadlock_event=deadlock)
+    action_started = threading.Event()
+    fake = InMemoryFakeAdapter(
+        target="in_memory",
+        deadlock_event=deadlock,
+        action_started_event=action_started,
+    )
 
-    registry = AdapterRegistry()
+    registry = AdapterRegistry(load_entry_points=False)
     registry.register(
         "in_memory",
         lambda cfg: AdapterPair(target=cfg.target, supervisor=fake, driver=fake),
@@ -125,30 +131,42 @@ def test_concurrent_ipc_abort_unblocks_deadlocked_action(tmp_path: Path) -> None
         str(socket_path),
         "--json",
     ]
+    motion_proc: subprocess.Popen[str] | None = None
     try:
         assert _run_cli([*base, "sys", "detect"])[0] == 0
 
-        motion_result: list[tuple[int, dict[str, object]]] = []
+        # Real two-process CLI invocation avoids Click CliRunner global stdout contention.
+        motion_proc = subprocess.Popen(
+            [sys.executable, "-m", "cli.main", *base, "--confirm", "motion", "home-all"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        assert action_started.wait(timeout=5.0), "home-all process did not enter ActionDriver"
 
-        def _blocked_home() -> None:
-            motion_result.append(_run_cli([*base, "--confirm", "motion", "home-all"]))
+        abort_proc = subprocess.run(
+            [sys.executable, "-m", "cli.main", *base, "sys", "abort"],
+            capture_output=True,
+            text=True,
+            timeout=5.0,
+            check=False,
+        )
+        assert abort_proc.returncode == ExitCode.OK, abort_proc.stdout + abort_proc.stderr
+        abort_payload = json.loads(abort_proc.stdout)
+        assert abort_payload["ok"] is True
+        assert abort_payload["state"]["estop_latched"] is True
 
-        worker = threading.Thread(target=_blocked_home, daemon=True)
-        worker.start()
-        time.sleep(0.05)
-
-        # Second client issues out-of-band sys abort while first client is stuck
-        code, payload = _run_cli([*base, "sys", "abort"])
-        assert code == ExitCode.OK
-        assert payload["ok"] is True
-
-        worker.join(timeout=2.0)
-        assert not worker.is_alive()
-        assert motion_result and motion_result[0][0] == ExitCode.EXECUTION_ERROR
+        motion_out, motion_err = motion_proc.communicate(timeout=5.0)
+        assert motion_proc.returncode == ExitCode.EXECUTION_ERROR, motion_out + motion_err
+        motion_payload = json.loads(motion_out)
+        assert motion_payload["ok"] is False
     finally:
+        if motion_proc is not None and motion_proc.poll() is None:
+            motion_proc.kill()
+            motion_proc.communicate(timeout=5.0)
         server.shutdown()
         server.server_close()
-        server_thread.join(timeout=1.0)
+        server_thread.join(timeout=2.0)
 
 
 def test_generic_toolchain_end_to_end_on_open_radio(tmp_path: Path) -> None:
@@ -242,3 +260,15 @@ def test_generic_toolchain_end_to_end_on_open_radio(tmp_path: Path) -> None:
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=1.0)
+
+
+def test_help_surfaces_exact_product_slogan() -> None:
+    from daemon.main import main as daemon_main
+
+    runner = CliRunner()
+    cli_help = runner.invoke(build_cli_app(), ["--help"], catch_exceptions=False)
+    daemon_help = runner.invoke(daemon_main, ["--help"], catch_exceptions=False)
+    assert cli_help.exit_code == 0
+    assert daemon_help.exit_code == 0
+    assert "Let AI drive all your devices" in cli_help.output
+    assert "Let AI drive all your devices" in daemon_help.output

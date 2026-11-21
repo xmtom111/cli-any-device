@@ -16,6 +16,7 @@ from core_types import (
     ErrorCode,
     ExitCode,
     MachineLifecycle,
+    RiskClass,
     ServiceSpec,
     ToolPresence,
 )
@@ -56,39 +57,22 @@ def _coerce_arg(spec: ArgSpec, raw: Any) -> Any:
             "arg_validation",
             f"Argument '{spec.name}' expects boolean.",
         )
-    if spec.arg_type == "int":
+    if spec.arg_type in ("int", "float"):
         if isinstance(raw, bool):
             raise GateRejection(
                 ErrorCode.E_INVALID_ARGS,
                 ExitCode.INVALID_USAGE,
                 "arg_validation",
-                f"Argument '{spec.name}' expects int, not bool.",
+                f"Argument '{spec.name}' expects {spec.arg_type}, not bool.",
             )
         try:
-            return int(raw)
+            return int(raw) if spec.arg_type == "int" else float(raw)
         except (TypeError, ValueError) as exc:
             raise GateRejection(
                 ErrorCode.E_INVALID_ARGS,
                 ExitCode.INVALID_USAGE,
                 "arg_validation",
-                f"Argument '{spec.name}' expects int.",
-            ) from exc
-    if spec.arg_type == "float":
-        if isinstance(raw, bool):
-            raise GateRejection(
-                ErrorCode.E_INVALID_ARGS,
-                ExitCode.INVALID_USAGE,
-                "arg_validation",
-                f"Argument '{spec.name}' expects float, not bool.",
-            )
-        try:
-            return float(raw)
-        except (TypeError, ValueError) as exc:
-            raise GateRejection(
-                ErrorCode.E_INVALID_ARGS,
-                ExitCode.INVALID_USAGE,
-                "arg_validation",
-                f"Argument '{spec.name}' expects float.",
+                f"Argument '{spec.name}' expects {spec.arg_type}.",
             ) from exc
     raise GateRejection(
         ErrorCode.E_INVALID_ARGS,
@@ -217,12 +201,16 @@ def evaluate_preconditions(
                     "precondition:detected",
                     "Machine has not passed sys.detect yet; run sys.detect before actuation.",
                 )
-            if state.identity is not None and not state.identity.hookup_verified:
+            if (
+                service.risk_class != RiskClass.R0_READ
+                and state.identity is not None
+                and not state.identity.hookup_verified
+            ):
                 raise GateRejection(
                     ErrorCode.E_NOT_DETECTED,
                     ExitCode.SAFETY_DENIED,
                     "precondition:detected",
-                    "Hardware hookup is not verified; complete hookup detection first.",
+                    "Hardware hookup is not verified; complete verification before actuation.",
                 )
         elif pred == "not_estop_latched":
             if state.estop_latched or state.lifecycle == MachineLifecycle.HALTED:

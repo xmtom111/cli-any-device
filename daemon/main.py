@@ -48,7 +48,7 @@ def _parse_endpoint_overrides(values: tuple[str, ...]) -> dict[str, str]:
     help="Optional TARGET=ENDPOINT override (repeatable).",
 )
 def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
-    """Start the CLI-Any-Device safety daemon for any declarative device bundle."""
+    """Let AI drive all your devices — safety daemon (cli-device-d)."""
     bundle_dir = resolve_bundle_dir(bundle)
     loaded = load_bundle(bundle_dir)
     validate_bundle(loaded)
