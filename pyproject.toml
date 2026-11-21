@@ -1,0 +1,85 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cli-any-device"
+version = "0.1.0"
+description = "Generic toolkit to turn any open-source machine (interface + manual/host API) into a safe, AI-callable CLI"
+requires-python = ">=3.11"
+dependencies = [
+    "PyYAML>=6.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+cli-device = "cli.main:main"
+cli-device-d = "daemon.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "core_types",
+    "adapter_spi",
+    "compiler",
+    "safety_kernel",
+    "daemon",
+    "cli",
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+no_implicit_optional = true
+packages = [
+    "core_types",
+    "adapter_spi",
+    "compiler",
+    "safety_kernel",
+    "daemon",
+    "cli",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = [
+    "core_types",
+    "adapter_spi",
+    "compiler",
+    "safety_kernel",
+    "daemon",
+    "cli",
+    "tests",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "core_types",
+    "adapter_spi",
+    "compiler",
+    "safety_kernel",
+    "daemon",
+    "cli",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

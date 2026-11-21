@@ -1,0 +1,224 @@
+# Jubilee Multi-Tool Motion Platform — Hand-Authored Device Profile (v1)
+# Authoritative spec: 技术路线与要求.md (Sections 3, 4, 5, 6, 8)
+# NOTE: Unverified axis limits and tool park positions MUST be checked against the
+# physical machine's live config.g / macros before real-machine motion.
+
+device_id: jubilee
+display_name: "Jubilee Multi-Tool Motion Platform"
+version: "1.0.0"
+device_kind: "motion_platform"
+review_status: "hand_authored_v1_fixture"
+
+hardware_ref:
+  upstream_repo: "https://github.com/machineagency/jubilee"
+  release_tag: "v2.2.2"
+  commit: "ee2858853a6bb9a53e7a31acb80355ea33f79e99"
+  step_path: "frame/cads/STEP/jubilee.STEP"
+  step_sha256: "533417712183775a544802ae29a6f94d50ef0839bc2f24f68bce7a048798afea"
+  license: "CC BY 4.0"
+  lab_host_api: "machineagency/science-jubilee (isolated inside adapters/duet_rrf/)"
+
+# Soft axis bounds: marked verified=false until checked against live config.g on site.
+# AutoDNA CAD-fitted travel MUST NOT be treated as official published travel.
+axes:
+  X:
+    min_mm: 0.0
+    max_mm: 300.0
+    verified: false
+    source: "Jubilee nominal envelope (verify against live Duet config.g M208 before real motion)"
+  Y:
+    min_mm: 0.0
+    max_mm: 300.0
+    verified: false
+    source: "Jubilee nominal envelope (verify against live Duet config.g M208 before real motion)"
+  Z:
+    min_mm: 0.0
+    max_mm: 300.0
+    verified: false
+    source: "Jubilee nominal envelope (verify against live Duet config.g M208 before real motion)"
+  U:
+    min_mm: 0.0
+    max_mm: 180.0
+    verified: false
+    source: "Tool-changer lock axis (verify against live homeu.g / tool_lock.g / tool_unlock.g)"
+
+default_safe_z_mm: 120.0
+min_safe_z_margin_mm: 10.0
+
+forbidden_zones:
+  - name: "tool_parking_strip_low_z"
+    x_min: 0.0
+    x_max: 300.0
+    y_min: 270.0
+    y_max: 300.0
+    z_min: 0.0
+    z_max: 90.0
+    reason: "Rear tool-parking posts occupy high-Y low-Z volume; only enter via tool.pickup/tool.park."
+
+tools:
+  - tool_id: 0
+    name: "tool_0"
+    park_x_mm: 50.0
+    park_y_mm: 295.0
+    park_z_mm: 120.0
+    length_mm: 40.0
+    verified: false
+  - tool_id: 1
+    name: "tool_1"
+    park_x_mm: 120.0
+    park_y_mm: 295.0
+    park_z_mm: 120.0
+    length_mm: 40.0
+    verified: false
+
+hookup:
+  primary_interface: >
+    Duet 2 Ethernet / Duet 3 RepRapFirmware (RRF) Ethernet HTTP
+    (Standalone: /rr_connect, /rr_gcode, /rr_model; SBC: /machine/connect, /machine/code, /machine/model).
+    Do NOT hardcode HTTP passwords (M551); supply via local config or environment variables.
+  default_endpoint: "http://192.168.1.2"
+  host_ip: "192.168.1.3"
+  subnet_mask: "255.255.255.0"
+  fallback_interface: >
+    USB serial (115200 baud) for diagnostics, initial Ethernet enablement, or recovery ONLY.
+    Never use USB serial as the default v1 motion channel because opening USB-serial often toggles DTR
+    and can reset the controller.
+  completion_semantics: >
+    Every motion/state-mutating atomic service MUST append M400 (wait for moves to finish) and poll
+    the RRF object model until state.status == "idle" and declared postconditions match (homed flags,
+    active tool, lock sensor). NEVER treat HTTP 200 from /rr_gcode as motion completion.
+  estop_policy: >
+    Software `cli-device sys abort` sends M112 over a lock-free, out-of-band HTTP channel that does
+    not wait on ActionDriver mutexes. CRITICAL: M112 does NOT cut 12/24 V motor/heater power. A
+    dedicated, human-tested physical emergency stop / power-cut relay within operator reach is
+    MANDATORY before any real-machine motion. After e-stop, the daemon latches HALTED until human
+    inspection, explicit confirmed reset (M999), and full re-homing.
+  preflight_prohibitions:
+    - "Close Duet Web Control (DWC) motion controls after verifying connectivity to prevent dual-writer session contention."
+    - "NEVER run move-to / G0 / G1 coordinate moves before homing."
+    - "NEVER run T<n> / T-1 tool changes before homing."
+    - "NEVER run standalone tool-lock / tool-unlock before homing or while suspended over a deck/labware."
+    - "Verify tool lock (U-axis) is unlocked/horizontal, endstop LEDs respond, +X moves left / +Y moves toward front (top-down front view), and Z bed is visibly level."
+    - "Confirm the deck is physically clear before confirming motion.home-all or motion.home-z."
+  field_verification_required:
+    - "Confirm controller model (Duet 2 vs Duet 3), topology (standalone vs SBC), and exact RRF version (RRF 3.x required for /rr_model; RRF 2.x requires upgrade or /rr_status fallback)."
+    - "Verify whether config.g still uses 192.168.1.2 (M552 P192.168.1.2 S1, M554 192.168.1.3, M553 P255.255.255.0) or lab LAN/DHCP, and whether HTTP password (M551) is set."
+    - "Inspect live homeall.g, homeu.g, tpre*/tpost*/tfree*, and Z homing safety policy on the Duet SD card (read-only)."
+    - "Verify installed tool IDs, park coordinates, tallest labware height, and tool-presence / crash-detection switches."
+    - "Verify location and actual 12/24 V power-cut operation of the physical emergency stop before first motion."
+  sections:
+    - section_id: "sec-ethernet-p2p"
+      title: "Point-to-Point Ethernet Wiring (Official Default)"
+      summary: "Connect host USB-Ethernet adapter directly to Duet Ethernet with static IPv4 192.168.1.3/24."
+      steps:
+        - "Hardware required: USB-to-Ethernet adapter, Ethernet cable, Duet board with Jubilee config.g (M552 P192.168.1.2 S1; M554 192.168.1.3; M553 P255.255.255.0)."
+        - "Windows: Control Panel -> Network and Sharing Center -> Change adapter settings -> Adapter IPv4 -> Static IP 192.168.1.3, Mask 255.255.255.0, Gateway blank. Verify http://192.168.1.2."
+        - "macOS: System Settings -> Network -> USB/LAN -> IPv4 Manually: 192.168.1.3, Subnet 255.255.255.0, Router blank. Verify http://192.168.1.2."
+        - "Ubuntu/Linux: Set wired adapter to Manual IPv4 192.168.1.3/24 (matching machine gateway, no default route). Verify http://192.168.1.2 (or http://jubilee.local on RRF 2.4+)."
+        - "Do NOT plug a default-configured Jubilee onto an office LAN; keep a closed point-to-point link unless config.g is explicitly configured for lab LAN."
+    - section_id: "sec-sd-card"
+      title: "Initial SD Card Configuration (Preferred Method)"
+      summary: "Write official Jubilee sys/ and macros/ directories to the Duet MicroSD card using a card reader."
+      steps:
+        - "Remove Duet MicroSD card while powered off and insert into a host card reader (official preferred method; USB upload is significantly more error-prone)."
+        - "Copy official machineagency/jubilee sys/ and macros/ folders onto the MicroSD card without inventing custom firmware patches."
+        - "Re-insert MicroSD, power on, and confirm DWC opens at http://192.168.1.2. Then leave DWC read-only or closed during CLI operation."
+    - section_id: "sec-preflight"
+      title: "Power-On & Pre-Homing Checklist"
+      summary: "Checks required before any motion or homing command is authorized."
+      steps:
+        - "Run `cli-device --json --target duet_real sys detect` and `cli-device --json --target duet_real sys preflight`."
+        - "Confirm U-axis tool lock is unlocked/horizontal and endstop indicators work."
+        - "Confirm axis directions (+X left, +Y toward front from top-down front view) and visually level Z bed."
+        - "Clear the deck completely before confirming `motion home-all` or `motion home-z`."
+        - "Always run `--dry-run` before `--confirm` on first motion."
+    - section_id: "sec-physical-estop"
+      title: "Mandatory Physical Emergency Stop & Software Abort"
+      summary: "Software M112 is necessary but NOT sufficient; physical power-cut e-stop is mandatory."
+      steps:
+        - "Install and test a physical emergency stop button or power-cut relay that cuts 12/24 V supply within arm's reach BEFORE any motion."
+        - "Software abort (`cli-device --json --target duet_real sys abort`) sends out-of-band M112 without waiting on the motion lock."
+        - "Remember: M112 halts firmware step generation but does NOT disconnect 12/24 V power."
+        - "After any e-stop, inspect mechanics, clear obstacles, run `cli-device --json --confirm sys reset-estop`, and re-home."
+    - section_id: "sec-troubleshooting"
+      title: "Troubleshooting `sys detect` Connection Failures"
+      summary: "Diagnostics referenced automatically when `cli-device sys detect` fails."
+      steps:
+        - "Check Ethernet cable link LEDs on both the USB-Ethernet adapter and Duet Ethernet jack."
+        - "Confirm host interface IPv4 is 192.168.1.3 / 255.255.255.0 (or matches modified M554 gateway in config.g)."
+        - "Confirm HTTP service is enabled in config.g (`M586 P0 S1`) and verify whether an HTTP password (`M551`) is set in environment/local config."
+        - "Verify Duet topology: standalone (`/rr_connect`, `/rr_model`) vs Duet 3 SBC (`/machine/connect`, `/machine/model`)."
+        - "If Ethernet is unavailable, use USB serial (115200, DTR/hupcl disabled) ONLY for read-only diagnostics and enabling Ethernet."
+    - section_id: "sec-grbl-not-jubilee"
+      title: "Notice: AutoDNA GRBL Simulator Is NOT a Real Jubilee"
+      summary: "Clarifies the boundary between real Jubilee (Duet/RRF), MuJoCo twin, and GRBL benchmark emulator."
+      steps:
+        - "Real Jubilee uses Duet 2/3 + RepRapFirmware (RRF) Ethernet HTTP with object model polling and T<n> tool-change macros."
+        - "Target `mujoco_twin` wraps the local CAD-backed MuJoCo twin for full-catalog simulation (motion, tool pickup/park, deck/labware)."
+        - "Target `grbl_sim` wraps the local AutoDNA GRBL 1.1 TCP emulator (motion subset ONLY). It has NO Duet object model, NO U-axis tool lock, and NO T macros; tool commands fail honestly with E_UNSUPPORTED_CAPABILITY."
+
+targets:
+  duet_real:
+    adapter_id: "duet_rrf"
+    is_real_hardware: true
+    default_endpoint: "http://192.168.1.2"
+    capabilities:
+      - "axes_xyz"
+      - "axes_xyzu"
+      - "tool_lock_u"
+      - "rrf_object_model"
+      - "deck_labware"
+      - "abort_m112"
+      - "abort_oob"
+      - "expert_gcode"
+    require_confirm_for_risks:
+      - "R2_MOTION"
+      - "R3_PHYSICAL_INIT"
+      - "R4_EXPERT"
+    notes: "Real Jubilee over Duet/RRF Ethernet HTTP. Requires detect + read-only preflight before motion; M400 + object model idle completion barrier; lock-free M112 abort."
+
+  mujoco_twin:
+    adapter_id: "mujoco_twin"
+    is_real_hardware: false
+    default_endpoint: "mujoco://local"
+    capabilities:
+      - "axes_xyz"
+      - "axes_xyzu"
+      - "tool_lock_u"
+      - "deck_labware"
+      - "abort_oob"
+      - "collision_proxy"
+    require_confirm_for_risks:
+      - "R3_PHYSICAL_INIT"
+      - "R4_EXPERT"
+    notes: "Read-only wrapper around local CAD-backed MuJoCo twin (path via env/config). Full v1 Jubilee catalog."
+
+  grbl_sim:
+    adapter_id: "grbl_sim"
+    is_real_hardware: false
+    default_endpoint: "tcp://127.0.0.1:2323"
+    capabilities:
+      - "axes_xyz"
+      - "serial_gcode"
+      - "abort_oob"
+    require_confirm_for_risks:
+      - "R3_PHYSICAL_INIT"
+      - "R4_EXPERT"
+    notes: "AutoDNA GRBL 1.1 emulator — motion subset ONLY. NOT a real Jubilee: no Duet object model, no tool lock, no T macros."
+
+  in_memory:
+    adapter_id: "in_memory"
+    is_real_hardware: false
+    default_endpoint: "memory://jubilee-fake"
+    capabilities:
+      - "axes_xyz"
+      - "axes_xyzu"
+      - "tool_lock_u"
+      - "rrf_object_model"
+      - "deck_labware"
+      - "abort_oob"
+      - "expert_gcode"
+    require_confirm_for_risks:
+      - "R3_PHYSICAL_INIT"
+      - "R4_EXPERT"
+    notes: "In-memory fake adapter for Phase 0 contract, compiler, safety_kernel, daemon, and CLI closed-loop verification."

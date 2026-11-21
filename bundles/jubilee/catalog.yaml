@@ -1,0 +1,597 @@
+# Jubilee Atomic Service Catalog (v1)
+# Authoritative spec: 技术路线与要求.md (Sections 5.2, 6.1, 6.2, 6.4, 8.3)
+# Default agent services compile into docs/generated/jubilee/SKILL.md.
+# Expert services (expert_only: true) are excluded from SKILL.md and require --confirm.
+
+device_id: jubilee
+version: "1.0.0"
+
+services:
+  - name: "sys.detect"
+    summary: "Probe controller/simulator, discover API dialect and firmware, and verify connection."
+    returns_summary: "endpoint, api_mode, firmware"
+    risk_class: "R0_READ"
+    args: []
+    requires_capabilities: []
+    preconditions: []
+    effects:
+      - "marks_machine_detected"
+    postconditions:
+      - "detected"
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "sys.status"
+    summary: "Poll canonical machine state (position, homed axes, active tool, safe Z, e-stop latch)."
+    returns_summary: "pos, homed, tool, safe_z"
+    risk_class: "R0_READ"
+    args: []
+    requires_capabilities: []
+    preconditions: []
+    effects: []
+    postconditions: []
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "sys.preflight"
+    summary: "Run read-only readiness checks (connection, firmware dialect, e-stop latch, tool sensor)."
+    returns_summary: "readiness_report"
+    risk_class: "R0_READ"
+    args: []
+    requires_capabilities: []
+    preconditions:
+      - "detected"
+    effects: []
+    postconditions: []
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "sys.abort"
+    summary: "Out-of-band lock-free emergency stop (sends M112 on Duet/RRF; latches HALTED)."
+    returns_summary: "ESTOP_LATCHED"
+    risk_class: "R0_READ"
+    args: []
+    requires_capabilities: []
+    preconditions: []
+    effects:
+      - "estop_latched"
+      - "invalidates_homed"
+    postconditions:
+      - "estop_latched"
+    fail_safe: "none"
+    timeout_s: 2.0
+    requires_confirm: false
+    bypasses_action_lock: true
+    expert_only: false
+
+  - name: "sys.reset_estop"
+    summary: "Clear latched e-stop after physical inspection (e.g. M999); requires re-homing afterward."
+    returns_summary: "lifecycle=IDLE, homed=[]"
+    risk_class: "R3_PHYSICAL_INIT"
+    args: []
+    requires_capabilities: []
+    preconditions:
+      - "detected"
+    effects:
+      - "clears_estop_latch"
+      - "invalidates_homed"
+    postconditions:
+      - "not_estop_latched"
+    fail_safe: "abort_m112"
+    timeout_s: 10.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "deck.load_deck"
+    summary: "Load declarative deck geometry and slot map into the runtime."
+    returns_summary: "slots, safe_z"
+    risk_class: "R1_CONFIG"
+    args:
+      - name: "spec"
+        type: "string"
+        required: true
+        description: "Deck definition filename or identifier."
+    requires_capabilities:
+      - "deck_labware"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+    effects:
+      - "deck_loaded"
+    postconditions:
+      - "deck_loaded"
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "deck.load_labware"
+    summary: "Register labware geometry (e.g. 96-well plate) into a deck slot."
+    returns_summary: "well_map, top_z"
+    risk_class: "R1_CONFIG"
+    args:
+      - name: "slot"
+        type: "string"
+        required: true
+        description: "Deck slot identifier (e.g. 1)."
+      - name: "spec"
+        type: "string"
+        required: true
+        description: "Labware definition file or spec name (e.g. corning_96_wellplate.json)."
+      - name: "top_z_mm"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: 0.0
+        max_value: 250.0
+        default: 20.0
+        description: "Top height of labware above bed in mm."
+    requires_capabilities:
+      - "deck_labware"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "deck_loaded"
+    effects:
+      - "labware_loaded"
+    postconditions:
+      - "labware_loaded"
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "deck.safe_z"
+    summary: "Set safe Z clearance height (rejected if below tallest labware + active tool + margin)."
+    returns_summary: "safe_z"
+    risk_class: "R1_CONFIG"
+    args:
+      - name: "z_mm"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Requested safe Z height in mm."
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "safe_z_above_clearance"
+    effects:
+      - "updates_safe_z"
+    postconditions:
+      - "safe_z_matches"
+    fail_safe: "none"
+    timeout_s: 5.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.home_all"
+    summary: "Home all supported machine axes (requires operator confirmation that deck is clear)."
+    returns_summary: "homed=[X,Y,Z,U]"
+    risk_class: "R3_PHYSICAL_INIT"
+    args: []
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "tool_presence_known"
+    effects:
+      - "homes_all_axes"
+    postconditions:
+      - "homed_xyz"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 90.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.home_xyu"
+    summary: "Home X, Y, and U axes (requires Z at/above safe Z and no tool mounted)."
+    returns_summary: "homed+=[X,Y,U]"
+    risk_class: "R3_PHYSICAL_INIT"
+    args: []
+    requires_capabilities:
+      - "axes_xyzu"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "no_tool_loaded"
+      - "z_at_or_above_safe_z"
+    effects:
+      - "homes_xyu"
+    postconditions:
+      - "homed_xyu"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 60.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.home_z"
+    summary: "Home Z axis (requires human --confirm that deck is clear; tool parked recommended)."
+    returns_summary: "homed+=[Z]"
+    risk_class: "R3_PHYSICAL_INIT"
+    args: []
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "no_tool_loaded"
+    effects:
+      - "homes_z"
+    postconditions:
+      - "homed_z"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 60.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.move_safe"
+    summary: "Retract to safe Z, translate XY, then descend to optional Z (requires homed axes)."
+    returns_summary: "pos=(x,y,z)"
+    risk_class: "R2_MOTION"
+    args:
+      - name: "x"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Target X coordinate in mm."
+      - name: "y"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Target Y coordinate in mm."
+      - name: "z"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Optional final Z coordinate in mm (defaults to current/safe Z)."
+      - name: "speed"
+        type: "float"
+        required: false
+        unit: "mm/min"
+        min_value: 60.0
+        max_value: 12000.0
+        description: "Optional travel speed in mm/min."
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyz"
+      - "target_in_bounds"
+      - "target_outside_forbidden_zones"
+    effects:
+      - "moves_to_xyz_via_safe_z"
+    postconditions:
+      - "idle"
+    fail_safe: "retract_safe_z_or_halt"
+    timeout_s: 30.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.move_to"
+    summary: "Direct linear XYZ move constrained by safe Z when crossing deck XY."
+    returns_summary: "pos=(x,y,z)"
+    risk_class: "R2_MOTION"
+    args:
+      - name: "x"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Target X coordinate in mm."
+      - name: "y"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Target Y coordinate in mm."
+      - name: "z"
+        type: "float"
+        required: true
+        unit: "mm"
+        min_value: 0.0
+        max_value: 300.0
+        description: "Target Z coordinate in mm."
+      - name: "speed"
+        type: "float"
+        required: false
+        unit: "mm/min"
+        min_value: 60.0
+        max_value: 12000.0
+        description: "Optional travel speed in mm/min."
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyz"
+      - "xy_requires_safe_z"
+      - "target_in_bounds"
+      - "target_outside_forbidden_zones"
+    effects:
+      - "moves_to_xyz"
+    postconditions:
+      - "idle"
+    fail_safe: "retract_safe_z_or_halt"
+    timeout_s: 30.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.move_rel"
+    summary: "Bounded relative XYZ offset move."
+    returns_summary: "pos=(x+dx,y+dy,z+dz)"
+    risk_class: "R2_MOTION"
+    args:
+      - name: "dx"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: -100.0
+        max_value: 100.0
+        default: 0.0
+        description: "Relative X offset in mm."
+      - name: "dy"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: -100.0
+        max_value: 100.0
+        default: 0.0
+        description: "Relative Y offset in mm."
+      - name: "dz"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: -100.0
+        max_value: 100.0
+        default: 0.0
+        description: "Relative Z offset in mm."
+      - name: "speed"
+        type: "float"
+        required: false
+        unit: "mm/min"
+        min_value: 60.0
+        max_value: 6000.0
+        description: "Optional travel speed in mm/min."
+    requires_capabilities:
+      - "axes_xyz"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyz"
+      - "xy_requires_safe_z"
+      - "target_in_bounds"
+      - "target_outside_forbidden_zones"
+    effects:
+      - "moves_relative_xyz"
+    postconditions:
+      - "idle"
+    fail_safe: "retract_safe_z_or_halt"
+    timeout_s: 30.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "motion.move_well"
+    summary: "Move via safe Z to a named labware well with optional vertical clearance offset dz."
+    returns_summary: "pos=well(slot,well)+dz"
+    risk_class: "R2_MOTION"
+    args:
+      - name: "slot"
+        type: "string"
+        required: true
+        description: "Deck slot containing loaded labware."
+      - name: "well"
+        type: "string"
+        required: true
+        description: "Well name (e.g. A1)."
+      - name: "dz"
+        type: "float"
+        required: false
+        unit: "mm"
+        min_value: -20.0
+        max_value: 150.0
+        default: 5.0
+        description: "Vertical offset above labware top Z in mm."
+    requires_capabilities:
+      - "axes_xyz"
+      - "deck_labware"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyz"
+      - "labware_loaded"
+      - "well_exists"
+      - "target_in_bounds"
+      - "target_outside_forbidden_zones"
+    effects:
+      - "moves_to_well_via_safe_z"
+    postconditions:
+      - "idle"
+    fail_safe: "retract_safe_z_or_halt"
+    timeout_s: 30.0
+    requires_confirm: false
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "tool.pickup"
+    summary: "Pick up a parked tool via RRF tool-change macros (requires carriage empty and homed)."
+    returns_summary: "active_tool=tool_id"
+    risk_class: "R3_PHYSICAL_INIT"
+    args:
+      - name: "tool_id"
+        type: "int"
+        required: true
+        min_value: 0
+        max_value: 9
+        description: "Tool index to pick up (e.g. 0)."
+    requires_capabilities:
+      - "axes_xyzu"
+      - "tool_lock_u"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyzu"
+      - "no_tool_loaded"
+      - "tool_id_known"
+    effects:
+      - "loads_tool"
+    postconditions:
+      - "active_tool_matches"
+      - "tool_locked"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 45.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  - name: "tool.park"
+    summary: "Park the currently mounted tool into its dock (requires a tool currently mounted)."
+    returns_summary: "active_tool=null"
+    risk_class: "R3_PHYSICAL_INIT"
+    args: []
+    requires_capabilities:
+      - "axes_xyzu"
+      - "tool_lock_u"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyzu"
+      - "tool_loaded"
+    effects:
+      - "parks_tool"
+    postconditions:
+      - "no_tool_loaded"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 45.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: false
+
+  # --- Expert escape hatches (R4_EXPERT, omitted from default SKILL.md, always require --confirm) ---
+
+  - name: "expert.gcode"
+    summary: "Expert escape hatch: send a raw G-code line directly (requires --confirm)."
+    returns_summary: "raw_reply"
+    risk_class: "R4_EXPERT"
+    args:
+      - name: "command"
+        type: "string"
+        required: true
+        description: "Single G-code line."
+    requires_capabilities:
+      - "expert_gcode"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+    effects:
+      - "raw_gcode_sent"
+    postconditions:
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 30.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: true
+
+  - name: "expert.tool_lock"
+    summary: "Expert escape hatch: actuate U-axis tool lock directly (requires --confirm)."
+    returns_summary: "tool_locked=true"
+    risk_class: "R4_EXPERT"
+    args: []
+    requires_capabilities:
+      - "axes_xyzu"
+      - "tool_lock_u"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyzu"
+    effects:
+      - "locks_tool_axis"
+    postconditions:
+      - "tool_locked"
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 15.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: true
+
+  - name: "expert.tool_unlock"
+    summary: "Expert escape hatch: actuate U-axis tool unlock directly (DANGER: never over deck/labware)."
+    returns_summary: "tool_locked=false"
+    risk_class: "R4_EXPERT"
+    args: []
+    requires_capabilities:
+      - "axes_xyzu"
+      - "tool_lock_u"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+      - "homed_xyzu"
+    effects:
+      - "unlocks_tool_axis"
+    postconditions:
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 15.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: true
+
+  - name: "expert.home_u"
+    summary: "Expert escape hatch: home U tool-lock axis independently (requires --confirm)."
+    returns_summary: "homed+=[U]"
+    risk_class: "R4_EXPERT"
+    args: []
+    requires_capabilities:
+      - "axes_xyzu"
+      - "tool_lock_u"
+    preconditions:
+      - "detected"
+      - "not_estop_latched"
+    effects:
+      - "homes_u"
+    postconditions:
+      - "idle"
+    fail_safe: "abort_m112"
+    timeout_s: 30.0
+    requires_confirm: true
+    bypasses_action_lock: false
+    expert_only: true

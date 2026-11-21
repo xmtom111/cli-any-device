@@ -1,0 +1,72 @@
+"""Pure domain types for CLI-Any-Device (zero I/O, zero third-party deps)."""
+
+from core_types.bundle import (
+    ArgSpec,
+    AxisLimit,
+    CatalogSpec,
+    DeviceBundle,
+    DeviceSpec,
+    ForbiddenZone,
+    HookupSection,
+    HookupSpec,
+    NumericLimit,
+    ServiceSpec,
+    TargetProfile,
+    ToolSlotSpec,
+)
+from core_types.envelope import CommandEnvelope, ExecutionMode
+from core_types.errors import (
+    AdapterTimeoutError,
+    AdapterTransportError,
+    CliAnyDeviceError,
+    ErrorCode,
+    ErrorDetail,
+    ExitCode,
+    HardwareFaultError,
+    UnsupportedCapabilityError,
+)
+from core_types.risk import RiskClass
+from core_types.state import (
+    ApiDialect,
+    CanonicalMachineState,
+    DeckState,
+    Identity,
+    LabwareState,
+    MachineLifecycle,
+    Position,
+    ToolPresence,
+)
+
+__all__ = [
+    "AdapterTimeoutError",
+    "AdapterTransportError",
+    "ApiDialect",
+    "ArgSpec",
+    "AxisLimit",
+    "CanonicalMachineState",
+    "CatalogSpec",
+    "CliAnyDeviceError",
+    "CommandEnvelope",
+    "DeckState",
+    "DeviceBundle",
+    "DeviceSpec",
+    "ErrorCode",
+    "ErrorDetail",
+    "ExecutionMode",
+    "ExitCode",
+    "ForbiddenZone",
+    "HardwareFaultError",
+    "HookupSection",
+    "HookupSpec",
+    "Identity",
+    "LabwareState",
+    "MachineLifecycle",
+    "NumericLimit",
+    "Position",
+    "RiskClass",
+    "ServiceSpec",
+    "TargetProfile",
+    "ToolPresence",
+    "ToolSlotSpec",
+    "UnsupportedCapabilityError",
+]
