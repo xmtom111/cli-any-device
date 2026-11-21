@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-any-device-grbl-sim"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["cli-any-device", "PyYAML>=6"]
+
+[project.entry-points."cli_any_device.adapters"]
+grbl_sim = "adapters.grbl_sim:create_adapter"
+
+[tool.setuptools]
+packages = ["adapters.grbl_sim"]
+
+[tool.setuptools.package-dir]
+"adapters.grbl_sim" = "."

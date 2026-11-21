@@ -1,0 +1,1 @@
+science-jubilee @ git+https://github.com/machineagency/science-jubilee.git@bb918fa78f300f57cc379a80731cfca7bdb55c66

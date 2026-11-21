@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-any-device-mujoco-twin"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["cli-any-device", "PyYAML>=6", "mujoco", "numpy"]
+
+[project.entry-points."cli_any_device.adapters"]
+mujoco_twin = "adapters.mujoco_twin:create_adapter"
+
+[tool.setuptools]
+packages = ["adapters.mujoco_twin"]
+
+[tool.setuptools.package-dir]
+"adapters.mujoco_twin" = "."
