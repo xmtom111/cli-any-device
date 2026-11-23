@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#070B14"/>
+      <stop offset="55%" stop-color="#0D1426"/>
+      <stop offset="100%" stop-color="#09111F"/>
+    </linearGradient>
+    <radialGradient id="glowCyan" cx="76%" cy="35%" r="48%">
+      <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowEmerald" cx="22%" cy="82%" r="45%">
+      <stop offset="0%" stop-color="#10B981" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accentLine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="55%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.2"/>
+    </linearGradient>
+    <linearGradient id="sloganGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="55%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#A7F3D0"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="1.5" cy="1.5" r="1" fill="#334155" fill-opacity="0.38"/>
+    </pattern>
+  </defs>
+
+  <!-- Outer dark card -->
+  <rect x="1" y="1" width="1278" height="418" rx="18" fill="url(#bg)" stroke="#1E293B" stroke-width="2"/>
+  <rect x="2" y="2" width="1276" height="416" rx="17" fill="url(#grid)"/>
+  <rect x="2" y="2" width="1276" height="416" rx="17" fill="url(#glowCyan)"/>
+  <rect x="2" y="2" width="1276" height="416" rx="17" fill="url(#glowEmerald)"/>
+
+  <!-- Subtle top highlight line -->
+  <rect x="56" y="2" width="520" height="2.5" rx="1.25" fill="url(#accentLine)"/>
+
+  <!-- Left column: Brand + Slogan + Pills -->
+  <g transform="translate(64, 58)">
+    <!-- Eyebrow badge -->
+    <rect x="0" y="0" width="298" height="30" rx="15" fill="#0F1B2E" stroke="#1E3A5F" stroke-width="1"/>
+    <circle cx="16" cy="15" r="4" fill="#34D399"/>
+    <text x="30" y="19.5" fill="#94A3B8" font-family="DM Mono, Cascadia Code, monospace" font-size="12" letter-spacing="1.1">HARDWARE TO AI-CALLABLE CLI</text>
+
+    <!-- Project title -->
+    <text x="0" y="96" fill="#F8FAFC" font-family="DM Sans, DejaVu Sans, sans-serif" font-size="56" font-weight="800" letter-spacing="-1.4">CLI-Any-Device</text>
+
+    <!-- Exact required slogan -->
+    <text x="0" y="148" fill="url(#sloganGrad)" font-family="DM Sans, DejaVu Sans, sans-serif" font-size="30" font-weight="700" letter-spacing="-0.4">Let AI drive all your devices</text>
+
+    <!-- Concise value prop -->
+    <text x="0" y="188" fill="#CBD5E1" font-family="DM Sans, DejaVu Sans, sans-serif" font-size="16.5" font-weight="400">Compile any device interface + manual or host API into a declarative pack,</text>
+    <text x="0" y="213" fill="#CBD5E1" font-family="DM Sans, DejaVu Sans, sans-serif" font-size="16.5" font-weight="400">short SKILL.md, HOOKUP.md, and a safety-gated CLI — without touching firmware.</text>
+
+    <!-- Feature pills -->
+    <g transform="translate(0, 248)" font-family="DM Mono, Cascadia Code, monospace" font-size="12">
+      <rect x="0" y="0" width="160" height="34" rx="8" fill="#0F172A" stroke="#1E293B"/>
+      <text x="80" y="21.5" text-anchor="middle" fill="#38BDF8">R0–R4 Default Deny</text>
+
+      <rect x="172" y="0" width="186" height="34" rx="8" fill="#0F172A" stroke="#1E293B"/>
+      <text x="265" y="21.5" text-anchor="middle" fill="#34D399">--dry-run / --confirm</text>
+
+      <rect x="370" y="0" width="142" height="34" rx="8" fill="#0F172A" stroke="#1E293B"/>
+      <text x="441" y="21.5" text-anchor="middle" fill="#FBBF24">Lock-Free Abort</text>
+
+      <rect x="524" y="0" width="166" height="34" rx="8" fill="#0F172A" stroke="#1E293B"/>
+      <text x="607" y="21.5" text-anchor="middle" fill="#CBD5E1">Zero Firmware Mods</text>
+    </g>
+  </g>
+
+  <!-- Right column: Clean generic hardware-to-CLI architectural visual -->
+  <g transform="translate(808, 48)">
+    <rect x="0" y="0" width="408" height="324" rx="14" fill="#0A101D" stroke="#1E293B" stroke-width="1.5"/>
+
+    <!-- Window chrome -->
+    <circle cx="20" cy="20" r="5" fill="#334155"/>
+    <circle cx="38" cy="20" r="5" fill="#334155"/>
+    <circle cx="56" cy="20" r="5" fill="#334155"/>
+    <text x="80" y="24" fill="#64748B" font-family="DM Mono, Cascadia Code, monospace" font-size="11.5">device-agnostic runtime</text>
+    <line x1="0" y1="38" x2="408" y2="38" stroke="#1E293B" stroke-width="1"/>
+
+    <!-- Row 1: Generic interfaces -->
+    <g transform="translate(20, 56)" font-family="DM Mono, Cascadia Code, monospace" font-size="11.5">
+      <text x="0" y="10" fill="#64748B" font-size="10.5" letter-spacing="0.8">ANY INTERFACE + MANUAL / HOST API</text>
+      <rect x="0" y="20" width="84" height="30" rx="6" fill="#111C33" stroke="#253554"/>
+      <text x="42" y="39" text-anchor="middle" fill="#E2E8F0">Serial</text>
+
+      <rect x="94" y="20" width="84" height="30" rx="6" fill="#111C33" stroke="#253554"/>
+      <text x="136" y="39" text-anchor="middle" fill="#E2E8F0">HTTP</text>
+
+      <rect x="188" y="20" width="84" height="30" rx="6" fill="#111C33" stroke="#253554"/>
+      <text x="230" y="39" text-anchor="middle" fill="#E2E8F0">SCPI</text>
+
+      <rect x="282" y="20" width="86" height="30" rx="6" fill="#111C33" stroke="#253554"/>
+      <text x="325" y="39" text-anchor="middle" fill="#E2E8F0">Python</text>
+    </g>
+
+    <!-- Connector arrows down -->
+    <line x1="204" y1="112" x2="204" y2="136" stroke="#22D3EE" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <polygon points="199,134 209,134 204,142" fill="#22D3EE"/>
+
+    <!-- Row 2: Device Pack + Compiler -->
+    <g transform="translate(20, 144)">
+      <rect x="0" y="0" width="368" height="44" rx="8" fill="#0E2238" stroke="#0EA5E9" stroke-opacity="0.55"/>
+      <text x="16" y="19" fill="#38BDF8" font-family="DM Mono, Cascadia Code, monospace" font-size="11.5" font-weight="600">device.yaml + catalog.yaml</text>
+      <text x="16" y="35" fill="#94A3B8" font-family="DM Mono, Cascadia Code, monospace" font-size="11">→ SKILL.md · HOOKUP.md · cli_schema.json</text>
+    </g>
+
+    <!-- Connector arrow down -->
+    <line x1="204" y1="192" x2="204" y2="216" stroke="#34D399" stroke-width="1.5" stroke-dasharray="3 3"/>
+    <polygon points="199,214 209,214 204,222" fill="#34D399"/>
+
+    <!-- Row 3: SafetyKernel + CLI -->
+    <g transform="translate(20, 224)">
+      <rect x="0" y="0" width="368" height="80" rx="8" fill="#0B1F1E" stroke="#10B981" stroke-opacity="0.6"/>
+      <text x="16" y="23" fill="#34D399" font-family="DM Mono, Cascadia Code, monospace" font-size="12" font-weight="600">$ cli-device --json --dry-run ...</text>
+      <text x="16" y="45" fill="#CBD5E1" font-family="DM Mono, Cascadia Code, monospace" font-size="11.5">cli-device  ⇄  cli-device-d (SafetyKernel)</text>
+      <text x="16" y="65" fill="#94A3B8" font-family="DM Mono, Cascadia Code, monospace" font-size="11">SPI: SupervisorChannel + ActionDriver</text>
+    </g>
+  </g>
+</svg>

@@ -112,6 +112,13 @@ def _emit_envelope(payload: dict[str, Any], *, as_json: bool) -> None:
             f"confirm_when_live={confirm_note} "
             f"args={json.dumps(plan.get('args', {}))}"
         )
+    elif isinstance(data, dict) and isinstance(data.get("identity"), dict):
+        ident = data["identity"]
+        click.echo(
+            f"  identity: api={ident.get('api_mode')} "
+            f"endpoint={ident.get('endpoint')} "
+            f"firmware={ident.get('firmware')}"
+        )
     elif isinstance(data, dict) and data:
         click.echo(f"  data: {json.dumps(data)}")
 

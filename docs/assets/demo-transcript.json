@@ -1,0 +1,51 @@
+[
+  {
+    "command": "cli-device --help",
+    "exit_code": 0,
+    "output": "Usage: cli-device [OPTIONS] COMMAND [ARGS]...\n\n  Let AI drive all your devices \u2014 safety-gated CLI for any declarative device\n  bundle.\n\nOptions:\n  --bundle TEXT  Device bundle name (under bundles/) or directory path.\n  --target TEXT  Execution target from device.yaml (e.g. in_memory).\n  --socket TEXT  Unix socket path for cli-device-d.  [default: /tmp/cli-\n                 device-d.sock]\n  --json         Emit JSON envelope.\n  --dry-run      Check safety gates and print plan without actuating.\n  --confirm      Confirm physical or high-risk actions (R2-real/R3/R4).\n  -h, --help     Show this message and exit.\n\nToolkit Commands:\n  bundle  Draft, validate, compile, and list declarative device bundles.\n  repl    Interactive session reusing top-level --bundle/--target/--socket\n          flags.\n\n  Pass --bundle <name|dir> (or CLI_DEVICE_BUNDLE) to load device commands.\n  Software abort never replaces a physical power-cut emergency stop.",
+    "hold_s": 2.4,
+    "clear_before": true
+  },
+  {
+    "command": "cli-device --bundle jubilee --help",
+    "exit_code": 0,
+    "output": "Usage: cli-device [OPTIONS] COMMAND [ARGS]...\n\n  Let AI drive all your devices \u2014 safety-gated CLI for any declarative device\n  bundle.\n\nOptions:\n  --bundle TEXT  Device bundle name (under bundles/) or directory path.\n  --target TEXT  Execution target from device.yaml (e.g. in_memory).\n  --socket TEXT  Unix socket path for cli-device-d.  [default: /tmp/cli-\n                 device-d.sock]\n  --json         Emit JSON envelope.\n  --dry-run      Check safety gates and print plan without actuating.\n  --confirm      Confirm physical or high-risk actions (R2-real/R3/R4).\n  -h, --help     Show this message and exit.\n\nDevice Commands (jubilee):\n  sys     System discovery, status, preflight, and lock-free abort.\n  deck    Device 'deck' commands from active bundle.\n  motion  Device 'motion' commands from active bundle.\n  tool    Device 'tool' commands from active bundle.\n  expert  Expert escape hatches (R4, always requires --confirm).\n\nToolkit Commands:\n  bundle  Draft, validate, compile, and list declarative device bundles.\n  repl    Interactive session reusing top-level --bundle/--target/--socket\n          flags.\n\n  Pass --bundle <name|dir> (or CLI_DEVICE_BUNDLE) to load device commands.\n  Software abort never replaces a physical power-cut emergency stop.",
+    "hold_s": 2.4,
+    "clear_before": true
+  },
+  {
+    "command": "cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device.sock sys detect",
+    "exit_code": 0,
+    "output": "[OK] sys.detect (target=in_memory, mode=live, 0ms)\n  identity: api=in_memory_fake endpoint=memory://jubilee-fake firmware=InMemoryFake 1.0\n  state: lifecycle=IDLE pos=(X=0.0 Y=0.0 Z=0.0 U=0.0)",
+    "hold_s": 1.8,
+    "clear_before": true
+  },
+  {
+    "command": "cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device.sock --dry-run motion home-all",
+    "exit_code": 0,
+    "output": "[OK] motion.home_all (target=in_memory, mode=dry_run, 0ms)\n  plan: risk=R3_PHYSICAL_INIT confirm_when_live=yes args={}\n  state: lifecycle=IDLE pos=(X=0.0 Y=0.0 Z=0.0 U=0.0)",
+    "hold_s": 2.4,
+    "clear_before": false
+  },
+  {
+    "command": "cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device.sock motion home-all",
+    "exit_code": 4,
+    "output": "[FAIL] motion.home_all (target=in_memory, mode=live, 0ms)\n  error: E_CONFIRM_REQUIRED (confirm_gate): Service 'motion.home_all' (R3_PHYSICAL_INIT) requires explicit --confirm.\n  hint: pass --confirm if you have verified physical safety.",
+    "hold_s": 2.2,
+    "clear_before": false
+  },
+  {
+    "command": "cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device.sock --confirm motion home-all",
+    "exit_code": 0,
+    "output": "[OK] motion.home_all (target=in_memory, mode=live, 0ms)\n  data: {\"telemetry\": {\"homed\": [\"U\", \"X\", \"Y\", \"Z\"]}}\n  state: lifecycle=IDLE homed=U,X,Y,Z pos=(X=0.0 Y=0.0 Z=120.0 U=0.0)",
+    "hold_s": 2.2,
+    "clear_before": false
+  },
+  {
+    "command": "cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device.sock --dry-run sys abort",
+    "exit_code": 0,
+    "output": "[OK] sys.abort (target=in_memory, mode=dry_run, 0ms)\n  plan: risk=R0_READ confirm_when_live=no args={}\n  state: lifecycle=IDLE homed=U,X,Y,Z pos=(X=0.0 Y=0.0 Z=120.0 U=0.0)",
+    "hold_s": 2.8,
+    "clear_before": false
+  }
+]

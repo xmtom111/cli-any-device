@@ -72,3 +72,30 @@ kill -TERM "$DPID" && wait "$DPID"
 - `.venv/bin/mypy`：**Success: no issues found in 23 source files**。
 - `.venv/bin/ruff check core_types adapter_spi compiler safety_kernel daemon cli tests/test_import_dag.py tests/test_contracts_and_spi.py tests/test_compiler.py tests/test_safety_kernel.py tests/test_daemon_and_cli.py tests/test_framework_fixes_and_fixtures.py`：**All checks passed!**
 - `.venv/bin/cli-device bundle build jubilee --check`：无漂移通过。
+
+---
+
+## 3. 公开页面视觉资源与真实终端 GIF 录制（本轮追加）
+
+### 3.1 新增视觉资产（全部位于 `docs/assets/`，`README.md` 均用相对路径引用）
+| 文件 | 用途与说明 |
+|---|---|
+| `docs/assets/hero-banner.svg` / `docs/assets/hero-banner.png` | GitHub 顶部 Hero 横幅（1280×420，深色 slate 现代开源风，保留精确口号 `Let AI drive all your devices`；右侧为通用 `Serial / HTTP / SCPI / Python → device.yaml + catalog.yaml → SafetyKernel` 示意图，不把 Jubilee 画成产品本身，无廉价插画/假真机图）。由无头 Chrome 渲染 `DM Sans` + `DM Mono` 保证跨平台字体一致，并已目视核查边缘留白。 |
+| `docs/assets/architecture.svg` / `docs/assets/architecture.png` | 构建期与运行期分层架构图（1200×310，含 `ActionDriver` 常规路径与虚线 `Lock-Free Abort` 锁外急停路径，强调不改原厂固件）。 |
+| `docs/assets/record_demo.py` | 可复现录制脚本：拉起真实 `.venv/bin/cli-device-d`，依次通过 `subprocess.run` 执行真实 `.venv/bin/cli-device` 命令，捕获原始标准输出与退出码，再用 Pillow 渲染终端帧并经 `ffmpeg`（`palettegen`/`paletteuse`）编码为循环 GIF，最后向守护进程发 `SIGTERM` 干净退出。零伪造输出。 |
+| `docs/assets/demo-transcript.json` | 本次录制采集的 7 条真实命令及其原始 stdout 与退出码审计记录。 |
+| `docs/assets/demo-terminal.gif` | 最终终端演示动图（940×540，201.3 KiB），完整演示：`cli-device --help` → `cli-device --bundle jubilee --help` → `sys detect` → `--dry-run motion home-all` → 未带 `--confirm` 被拒绝（`E_CONFIRM_REQUIRED`）→ `--confirm motion home-all` → `--dry-run sys abort`。 |
+
+### 3.2 `cli/main.py` 细节微调
+- 优化普通文本模式下 `sys.detect` 的 `identity` 输出（展示为紧凑单行 `identity: api=... endpoint=... firmware=...`），使人工阅读与演示 GIF 均更清晰；`--json` 输出格式完全不变。
+
+### 3.3 录制与回归验证命令
+```bash
+/usr/bin/python3 docs/assets/record_demo.py
+.venv/bin/pytest tests/test_daemon_and_cli.py tests/test_framework_fixes_and_fixtures.py tests/test_import_dag.py tests/test_compiler.py tests/test_safety_kernel.py tests/test_contracts_and_spi.py -v
+.venv/bin/mypy
+.venv/bin/ruff check core_types adapter_spi compiler safety_kernel daemon cli tests/test_import_dag.py tests/test_contracts_and_spi.py tests/test_compiler.py tests/test_safety_kernel.py tests/test_daemon_and_cli.py tests/test_framework_fixes_and_fixtures.py
+.venv/bin/cli-device bundle build jubilee --check
+```
+- `record_demo.py`：成功捕获 7 条真实命令并生成 `docs/assets/demo-terminal.gif`（201.3 KiB）；已通过图像读取工具逐张核查 `hero-banner.png`、`architecture.png` 与 GIF 关键帧，无裁切、无重叠。
+- `pytest`：**32 passed**；`mypy --strict`：23 文件 **0 错误**；`ruff check`：**0 错误**；`bundle build jubilee --check`：无漂移通过。
