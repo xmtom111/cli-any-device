@@ -9,11 +9,13 @@ from pathlib import Path
 
 import click
 
-from compiler import load_bundle, resolve_bundle_dir, validate_bundle
+from compiler import BundleValidationError, load_bundle, resolve_bundle_dir, validate_bundle
+from core_types import ExitCode
 from daemon.ipc import DaemonIPCServer
 from daemon.service import DeviceDaemon
 
 DEFAULT_SOCKET_PATH = "/tmp/cli-device-d.sock"
+HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
 
 
 def _parse_endpoint_overrides(values: tuple[str, ...]) -> dict[str, str]:
@@ -28,12 +30,19 @@ def _parse_endpoint_overrides(values: tuple[str, ...]) -> dict[str, str]:
     return overrides
 
 
-@click.command(name="cli-device-d")
+@click.command(
+    name="cli-device-d",
+    context_settings=HELP_CONTEXT,
+    epilog=(
+        "Stop cleanly with SIGTERM or SIGINT. "
+        "Software abort never replaces a physical power-cut emergency stop."
+    ),
+)
 @click.option(
     "--bundle",
     required=True,
     envvar="CLI_DEVICE_BUNDLE",
-    help="Device bundle name (under bundles/) or path to bundle directory.",
+    help="Device bundle name (under bundles/) or directory path.",
 )
 @click.option(
     "--socket",
@@ -41,19 +50,23 @@ def _parse_endpoint_overrides(values: tuple[str, ...]) -> dict[str, str]:
     default=DEFAULT_SOCKET_PATH,
     envvar="CLI_DEVICE_SOCKET",
     show_default=True,
-    help="Unix domain socket path for local IPC.",
+    help="Unix socket path for local IPC.",
 )
 @click.option(
     "--endpoint",
     "endpoints",
     multiple=True,
-    help="Optional TARGET=ENDPOINT override (repeatable).",
+    help="Override target endpoint as TARGET=ENDPOINT (repeatable).",
 )
 def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
-    """Let AI drive all your devices — safety daemon (cli-device-d)."""
-    bundle_dir = resolve_bundle_dir(bundle)
-    loaded = load_bundle(bundle_dir)
-    validate_bundle(loaded)
+    """Let AI drive all your devices — safety daemon for declarative device bundles."""
+    try:
+        bundle_dir = resolve_bundle_dir(bundle)
+        loaded = load_bundle(bundle_dir)
+        validate_bundle(loaded)
+    except BundleValidationError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        sys.exit(int(ExitCode.INVALID_USAGE))
 
     daemon = DeviceDaemon(
         bundle=loaded,
@@ -73,9 +86,10 @@ def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
         daemon=True,
     )
     serve_thread.start()
+    targets = ", ".join(sorted(loaded.device.targets))
     click.echo(
         f"cli-device-d listening on {socket_path} "
-        f"(bundle={loaded.device.device_id} v{loaded.device.version})"
+        f"(bundle={loaded.device.device_id} v{loaded.device.version}, targets=[{targets}])"
     )
     sys.stdout.flush()
     try:

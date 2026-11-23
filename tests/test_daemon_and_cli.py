@@ -273,8 +273,31 @@ def test_help_surfaces_exact_product_slogan() -> None:
     daemon_help = runner.invoke(daemon_main, ["--help"], catch_exceptions=False)
     assert cli_help.exit_code == 0
     assert daemon_help.exit_code == 0
-    assert "Let AI drive all your devices" in cli_help.output
-    assert "Let AI drive all your devices" in daemon_help.output
+    assert "Let AI drive all your devices" in " ".join(cli_help.output.split())
+    assert "Let AI drive all your devices" in " ".join(daemon_help.output.split())
+    assert "physical power-cut emergency stop" in " ".join(cli_help.output.split())
+    assert "physical power-cut emergency stop" in " ".join(daemon_help.output.split())
+
+    # Missing --bundle gives actionable guidance instead of bare 'No such command'
+    missing_bundle = runner.invoke(build_cli_app(), ["sys", "detect"], catch_exceptions=False)
+    assert missing_bundle.exit_code == int(ExitCode.INVALID_USAGE)
+    assert "--bundle" in missing_bundle.output
+
+    # Bad --bundle on cli-device-d fails cleanly with exit 2 (no traceback)
+    bad_daemon = runner.invoke(
+        daemon_main, ["--bundle", "nonexistent_bundle"], catch_exceptions=False
+    )
+    assert bad_daemon.exit_code == int(ExitCode.INVALID_USAGE)
+    assert "Error:" in bad_daemon.output
+    assert "Traceback" not in bad_daemon.output
+
+    # Active --bundle separates Device Commands from Toolkit Commands
+    jubilee_help = runner.invoke(
+        build_cli_app(), ["--bundle", "jubilee", "--help"], catch_exceptions=False
+    )
+    assert jubilee_help.exit_code == 0
+    assert "Device Commands (jubilee):" in jubilee_help.output
+    assert "Toolkit Commands:" in jubilee_help.output
 
 
 @pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
