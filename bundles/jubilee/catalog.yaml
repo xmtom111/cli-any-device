@@ -1,5 +1,4 @@
 # Jubilee Atomic Service Catalog (v1)
-# Authoritative spec: 技术路线与要求.md (Sections 5.2, 6.1, 6.2, 6.4, 8.3)
 # Default agent services compile into docs/generated/jubilee/SKILL.md.
 # Expert services (expert_only: true) are excluded from SKILL.md and require --confirm.
 
