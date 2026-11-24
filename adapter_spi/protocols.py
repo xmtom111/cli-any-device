@@ -26,6 +26,7 @@ class ActionRequest:
     timeout_s: float
     safe_z_mm: float | None = None
     target_coords: dict[str, float] | None = None
+    protocol: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

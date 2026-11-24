@@ -29,10 +29,12 @@ class DeviceDaemon:
         bundle: DeviceBundle,
         registry: AdapterRegistry | None = None,
         endpoint_overrides: dict[str, str] | None = None,
+        allow_live_hardware: bool = False,
     ) -> None:
         self._bundle = bundle
         self._registry = registry or AdapterRegistry()
         self._endpoint_overrides = dict(endpoint_overrides or {})
+        self._allow_live_hardware = allow_live_hardware
         self._session_lock = threading.Lock()
         self._kernels: dict[str, SafetyKernel] = {}
         self._pairs: dict[str, AdapterPair] = {}
@@ -63,10 +65,12 @@ class DeviceDaemon:
                 target=target_name,
                 endpoint=endpoint,
                 options={
+                    **profile.adapter_options,
                     "capabilities": sorted(profile.capabilities),
                     "is_real_hardware": profile.is_real_hardware,
                     "device_id": self._bundle.device.device_id,
                     "device_kind": self._bundle.device.device_kind,
+                    "allow_live_hardware": self._allow_live_hardware,
                 },
             )
             pair = self._registry.create(profile.adapter_id, cfg)
@@ -75,6 +79,7 @@ class DeviceDaemon:
                 target_name=target_name,
                 supervisor=pair.supervisor,
                 driver=pair.driver,
+                allow_live_hardware=self._allow_live_hardware,
             )
             self._pairs[target_name] = pair
             self._kernels[target_name] = kernel

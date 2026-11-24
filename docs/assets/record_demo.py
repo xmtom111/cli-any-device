@@ -74,6 +74,10 @@ def _capture_real_session() -> list[dict[str, Any]]:
                 time.sleep(0.03)
 
             env = {**os.environ, "COLUMNS": "88"}
+            display_base = f"cli-device --bundle jubilee --target in_memory --socket {display_sock}"
+            cli_base = [
+                CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock)
+            ]
             commands: list[tuple[str, list[str], float, bool]] = [
                 (
                     "cli-device --help",
@@ -88,32 +92,32 @@ def _capture_real_session() -> list[dict[str, Any]]:
                     True,
                 ),
                 (
-                    f"cli-device --bundle jubilee --target in_memory --socket {display_sock} sys detect",
-                    [CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock), "sys", "detect"],
+                    f"{display_base} sys detect",
+                    [*cli_base, "sys", "detect"],
                     1.8,
                     True,
                 ),
                 (
-                    f"cli-device --bundle jubilee --target in_memory --socket {display_sock} --dry-run motion home-all",
-                    [CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock), "--dry-run", "motion", "home-all"],
+                    f"{display_base} --dry-run motion home-all",
+                    [*cli_base, "--dry-run", "motion", "home-all"],
                     2.4,
                     False,
                 ),
                 (
-                    f"cli-device --bundle jubilee --target in_memory --socket {display_sock} motion home-all",
-                    [CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock), "motion", "home-all"],
+                    f"{display_base} motion home-all",
+                    [*cli_base, "motion", "home-all"],
                     2.2,
                     False,
                 ),
                 (
-                    f"cli-device --bundle jubilee --target in_memory --socket {display_sock} --confirm motion home-all",
-                    [CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock), "--confirm", "motion", "home-all"],
+                    f"{display_base} --confirm motion home-all",
+                    [*cli_base, "--confirm", "motion", "home-all"],
                     2.2,
                     False,
                 ),
                 (
-                    f"cli-device --bundle jubilee --target in_memory --socket {display_sock} --dry-run sys abort",
-                    [CLI_BIN, "--bundle", "jubilee", "--target", "in_memory", "--socket", str(sock), "--dry-run", "sys", "abort"],
+                    f"{display_base} --dry-run sys abort",
+                    [*cli_base, "--dry-run", "sys", "abort"],
                     2.8,
                     False,
                 ),
@@ -194,7 +198,9 @@ def _render_frame(
     draw = ImageDraw.Draw(img)
 
     # Terminal window card
-    draw.rounded_rectangle([8, 8, WIDTH - 9, HEIGHT - 9], radius=14, fill=BG_TERM, outline=BORDER, width=2)
+    draw.rounded_rectangle(
+        [8, 8, WIDTH - 9, HEIGHT - 9], radius=14, fill=BG_TERM, outline=BORDER, width=2
+    )
     # Title bar
     draw.rounded_rectangle([10, 10, WIDTH - 11, TOP_BAR_H + 8], radius=12, fill=BG_BAR)
     draw.rectangle([10, TOP_BAR_H - 4, WIDTH - 11, TOP_BAR_H + 8], fill=BG_BAR)
@@ -204,7 +210,9 @@ def _render_frame(
     draw.ellipse([26, 22, 38, 34], fill=(255, 95, 86))
     draw.ellipse([46, 22, 58, 34], fill=(255, 189, 46))
     draw.ellipse([66, 22, 78, 34], fill=(39, 201, 63))
-    draw.text((WIDTH // 2 - 145, 20), "cli-device — offline in_memory demo", fill=FG_MUTED, font=font_reg)
+    draw.text(
+        (WIDTH // 2 - 145, 20), "cli-device — offline in_memory demo", fill=FG_MUTED, font=font_reg
+    )
 
     visible = lines[-MAX_LINES:]
     y = BODY_TOP + 6
@@ -258,7 +266,7 @@ def _build_gif(steps: list[dict[str, Any]], out_gif: Path) -> None:
                 screen.append(_classify_line(raw_line))
             emit(
                 _render_frame(screen, font_reg=font_reg, font_med=font_med, cursor_on=False),
-                int(round(float(step["hold_s"]) * fps)),
+                round(float(step["hold_s"]) * fps),
             )
 
         palette = frames_dir / "palette.png"

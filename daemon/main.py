@@ -58,7 +58,15 @@ def _parse_endpoint_overrides(values: tuple[str, ...]) -> dict[str, str]:
     multiple=True,
     help="Override target endpoint as TARGET=ENDPOINT (repeatable).",
 )
-def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
+@click.option(
+    "--allow-live-hardware",
+    is_flag=True,
+    default=False,
+    help="Enable live mutations on real targets in verified device bundles.",
+)
+def main(
+    bundle: str, socket_path: str, endpoints: tuple[str, ...], allow_live_hardware: bool
+) -> None:
     """Let AI drive all your devices — safety daemon for declarative device bundles."""
     try:
         bundle_dir = resolve_bundle_dir(bundle)
@@ -71,6 +79,7 @@ def main(bundle: str, socket_path: str, endpoints: tuple[str, ...]) -> None:
     daemon = DeviceDaemon(
         bundle=loaded,
         endpoint_overrides=_parse_endpoint_overrides(endpoints),
+        allow_live_hardware=allow_live_hardware,
     )
     server = DaemonIPCServer(socket_path=Path(socket_path), daemon=daemon)
     stop_event = threading.Event()

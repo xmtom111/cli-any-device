@@ -102,6 +102,7 @@ class TargetProfile:
     require_confirm_for_risks: frozenset[RiskClass] = frozenset()
     default_endpoint: str | None = None
     notes: str = ""
+    adapter_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +123,7 @@ class DeviceSpec:
     forbidden_zones: tuple[ForbiddenZone, ...] = ()
     tools: dict[int, ToolSlotSpec] = field(default_factory=dict)
     source_inputs: dict[str, Any] = field(default_factory=dict)
-    review_status: str = "verified"
+    review_status: str = "draft"
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +158,8 @@ class ServiceSpec:
     bypasses_action_lock: bool = False
     expert_only: bool = False
     returns_summary: str = ""
+    confirm_if: tuple[str, ...] = ()
+    protocol: dict[str, Any] = field(default_factory=dict)
 
     @property
     def cli_group(self) -> str:

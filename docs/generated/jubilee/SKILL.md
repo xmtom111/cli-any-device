@@ -6,6 +6,7 @@
 - Start daemon first: `cli-device-d --bundle jubilee --socket /tmp/cli-device-d.sock`.
 - Targets needing an installed `cli_any_device.adapters` plugin before use: `duet_real` (adapter `duet_rrf`), `mujoco_twin` (adapter `mujoco_twin`), `grbl_sim` (adapter `grbl_sim`).
 - Built-in `--target in_memory` runs an offline in-memory fake (no physical actuation).
+- Live changes on real hardware require a verified bundle and daemon startup with `--allow-live-hardware`.
 - Always pass `--json` and an explicit `--target <target>`.
 - Start every session with `sys detect` then `sys preflight`.
 - Run `--dry-run` before mutating sequences; pass `--confirm` only when authorized.
@@ -19,7 +20,7 @@ sys.status()                           -> pos, homed, tool, safe_z   [R0]
 sys.preflight()                        -> readiness_report           [R0]
 sys.abort()                            -> ESTOP_LATCHED              [R0, lock-free]
 sys.reset_estop()                      -> lifecycle=IDLE, homed=[]   [R3, --confirm]
-deck.load_deck(spec)                   -> slots, safe_z              [R1]
+deck.load_deck(spec)                   -> slots, safe_z              [R1, conditional --confirm]
 deck.load_labware(slot, spec, top_z_mm?) -> well_map, top_z            [R1]
 deck.safe_z(z_mm)                      -> safe_z                     [R1]
 motion.home_all()                      -> homed=[X,Y,Z,U]            [R3, --confirm]

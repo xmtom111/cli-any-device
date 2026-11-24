@@ -155,6 +155,9 @@
       "returns_summary": "slots, safe_z",
       "risk_class": "R1_CONFIG",
       "requires_confirm": false,
+      "confirm_if": [
+        "state.deck != null"
+      ],
       "bypasses_action_lock": false,
       "expert_only": false,
       "requires_capabilities": [

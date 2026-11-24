@@ -74,6 +74,14 @@ def _parse_risk(raw: Any, context: str) -> RiskClass:
         raise BundleValidationError(f"Invalid risk_class {raw!r} in {context}.") from exc
 
 
+def _parse_options(raw: Any, context: str) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(key, str) for key in raw):
+        raise BundleValidationError(f"{context} must be a mapping with string keys.")
+    return dict(raw)
+
+
 def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
     try:
         device_id = str(raw["device_id"]).strip()
@@ -83,7 +91,7 @@ def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
         raise BundleValidationError(f"device.yaml missing required field: {exc}") from exc
 
     device_kind = str(raw.get("device_kind", "generic_machine")).strip()
-    review_status = str(raw.get("review_status", "verified")).strip()
+    review_status = str(raw.get("review_status", "draft")).strip()
     hardware_ref = {str(k): str(v) for k, v in dict(raw.get("hardware_ref") or {}).items()}
     source_inputs = dict(raw.get("source_inputs") or {})
 
@@ -190,6 +198,9 @@ def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
                 str(t_raw["default_endpoint"]) if t_raw.get("default_endpoint") else None
             ),
             notes=str(t_raw.get("notes", "")).strip(),
+            adapter_options=_parse_options(
+                t_raw.get("adapter_options"), f"Target {target_name!r} adapter_options"
+            ),
         )
 
     return DeviceSpec(
@@ -227,6 +238,11 @@ def _parse_catalog_spec(raw: dict[str, Any]) -> CatalogSpec:
         name = str(item["name"]).strip()
         if name in services:
             raise BundleValidationError(f"Duplicate service definition: {name!r}")
+        confirm_if = item.get("confirm_if", [])
+        if not isinstance(confirm_if, list) or not all(
+            isinstance(rule, str) and rule.strip() for rule in confirm_if
+        ):
+            raise BundleValidationError(f"Service {name!r} confirm_if must be a list of rules.")
         args = tuple(
             ArgSpec(
                 name=str(a["name"]),
@@ -257,6 +273,8 @@ def _parse_catalog_spec(raw: dict[str, Any]) -> CatalogSpec:
             bypasses_action_lock=bool(item.get("bypasses_action_lock", False)),
             expert_only=bool(item.get("expert_only", False)),
             returns_summary=str(item.get("returns_summary", "")).strip(),
+            confirm_if=tuple(rule.strip() for rule in confirm_if),
+            protocol=_parse_options(item.get("protocol"), f"Service {name!r} protocol"),
         )
     return CatalogSpec(device_id=device_id, version=version, services=services)
 

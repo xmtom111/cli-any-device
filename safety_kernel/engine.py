@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import threading
 import time
+from copy import deepcopy
 from typing import Any
 
 from adapter_spi import ActionDriver, ActionRequest, SupervisorChannel
@@ -23,18 +24,24 @@ from core_types import (
     ExecutionMode,
     ExitCode,
     HardwareFaultError,
+    RiskClass,
     ServiceSpec,
     TargetProfile,
     UnsupportedCapabilityError,
 )
+from safety_kernel.domains import DomainExtension, PreconditionContext, register_domains
+from safety_kernel.domains.labware_deck import LABWARE_DECK
+from safety_kernel.domains.motion_3d import MOTION_3D
 from safety_kernel.predicates import (
     GateRejection,
     PostconditionError,
-    evaluate_postconditions,
-    evaluate_preconditions,
-    resolve_target_coords,
+    evaluate_confirm_if,
+    evaluate_postcondition,
+    evaluate_precondition,
     validate_and_coerce_args,
 )
+
+DEFAULT_DOMAINS = register_domains(MOTION_3D, LABWARE_DECK)
 
 ESTOP_ALLOWED_SERVICES = frozenset(
     {
@@ -57,6 +64,8 @@ class SafetyKernel:
         target_name: str,
         supervisor: SupervisorChannel,
         driver: ActionDriver,
+        allow_live_hardware: bool = False,
+        domains: DomainExtension = DEFAULT_DOMAINS,
     ) -> None:
         if target_name not in bundle.device.targets:
             raise ValueError(
@@ -68,6 +77,8 @@ class SafetyKernel:
         self._profile: TargetProfile = bundle.device.targets[target_name]
         self._supervisor = supervisor
         self._driver = driver
+        self._allow_live_hardware = allow_live_hardware
+        self._domains = domains
         self._action_lock = threading.Lock()
 
     @property
@@ -161,6 +172,20 @@ class SafetyKernel:
                 ),
             )
 
+        if dry_run:
+            return self._invoke_checked(service, coerced_args, mode, t0, confirm=confirm)
+        with self._action_lock:
+            return self._invoke_checked(service, coerced_args, mode, t0, confirm=confirm)
+
+    def _invoke_checked(
+        self,
+        service: ServiceSpec,
+        coerced_args: dict[str, Any],
+        mode: ExecutionMode,
+        t0: float,
+        *,
+        confirm: bool,
+    ) -> CommandEnvelope:
         state = self._safe_poll()
         if state.estop_latched and service.name not in ESTOP_ALLOWED_SERVICES:
             return self._error_envelope(
@@ -179,9 +204,37 @@ class SafetyKernel:
                 ),
             )
 
-        target_coords = resolve_target_coords(service, coerced_args, state)
+        if (
+            mode == ExecutionMode.LIVE
+            and service.risk_class != RiskClass.R0_READ
+            and self._profile.is_real_hardware
+            and (
+                self._bundle.device.review_status != "verified"
+                or self._allow_live_hardware is not True
+            )
+        ):
+            return self._error_envelope(
+                service_name=service.name,
+                mode=mode,
+                t0=t0,
+                exit_code=ExitCode.SAFETY_DENIED,
+                state=state,
+                error=ErrorDetail(
+                    code=ErrorCode.E_LIVE_LOCKED,
+                    step="live_hardware_gate",
+                    reason=(
+                        "Live hardware changes require review_status: verified "
+                        "and daemon startup with --allow-live-hardware."
+                    ),
+                ),
+            )
+
+        resolver = self._domains.coord_resolver.get(service.name)
         try:
-            evaluate_preconditions(service, coerced_args, state, self._bundle.device, target_coords)
+            target_coords = resolver(coerced_args, state) if resolver is not None else None
+            context = PreconditionContext(coerced_args, state, self._bundle.device, target_coords)
+            self._evaluate_preconditions(service, context)
+            needs_confirm = self._needs_confirmation(service, state)
         except GateRejection as rej:
             return self._error_envelope(
                 service_name=service.name,
@@ -192,8 +245,7 @@ class SafetyKernel:
                 error=ErrorDetail(code=rej.code, step=rej.step, reason=rej.reason),
             )
 
-        needs_confirm = self._needs_confirmation(service, state)
-        if dry_run:
+        if mode == ExecutionMode.DRY_RUN:
             plan = {
                 "service": service.name,
                 "risk_class": service.risk_class.value,
@@ -233,16 +285,49 @@ class SafetyKernel:
                 ),
             )
 
-        with self._action_lock:
-            return self._execute_locked(service, coerced_args, target_coords, t0)
+        return self._execute_locked(service, coerced_args, target_coords, t0)
 
     def _needs_confirmation(self, service: ServiceSpec, state: CanonicalMachineState) -> bool:
         if service.requires_confirm:
             return True
         if service.risk_class in self._profile.require_confirm_for_risks:
             return True
-        # Overwriting an already-loaded deck geometry requires explicit confirmation (Section 6.4)
-        return service.name == "deck.load_deck" and state.deck is not None
+        try:
+            return any(evaluate_confirm_if(rule, state) for rule in service.confirm_if)
+        except ValueError as exc:
+            raise GateRejection(
+                ErrorCode.E_INVALID_ARGS, ExitCode.INVALID_USAGE, "confirm_gate", str(exc)
+            ) from exc
+
+    def _evaluate_preconditions(self, service: ServiceSpec, context: PreconditionContext) -> None:
+        for predicate in service.preconditions:
+            if evaluate_precondition(predicate, service, context.state):
+                continue
+            check = self._domains.preconditions.get(predicate)
+            if check is None:
+                raise GateRejection(
+                    ErrorCode.E_PRECONDITION_FAILED,
+                    ExitCode.SAFETY_DENIED,
+                    f"precondition:{predicate}",
+                    f"Unknown precondition predicate '{predicate}' (default deny).",
+                )
+            check(context)
+
+    def _evaluate_postconditions(
+        self,
+        service: ServiceSpec,
+        args: dict[str, Any],
+        state: CanonicalMachineState,
+    ) -> None:
+        for predicate in service.postconditions:
+            if evaluate_postcondition(predicate, service, state):
+                continue
+            check = self._domains.postconditions.get(predicate)
+            if check is None:
+                raise PostconditionError(
+                    f"Unknown postcondition predicate '{predicate}' (default deny)."
+                )
+            check(args, state)
 
     def _handle_lock_free_abort(
         self,
@@ -281,7 +366,7 @@ class SafetyKernel:
             if service.name == "sys.detect":
                 identity = self._supervisor.detect()
                 settled = self._supervisor.poll_state()
-                evaluate_postconditions(service, coerced_args, settled)
+                self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
                     service=service.name,
@@ -331,7 +416,7 @@ class SafetyKernel:
 
             if service.name == "sys.reset_estop":
                 settled = self._supervisor.reset_estop()
-                evaluate_postconditions(service, coerced_args, settled)
+                self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
                     service=service.name,
@@ -353,6 +438,7 @@ class SafetyKernel:
                     timeout_s=service.timeout_s,
                     safe_z_mm=current_state.safe_z_mm,
                     target_coords=target_coords,
+                    protocol=deepcopy(service.protocol),
                 )
             )
             if not telemetry.accepted:
@@ -374,7 +460,7 @@ class SafetyKernel:
                 )
 
             settled = self._supervisor.await_settled(service.timeout_s)
-            evaluate_postconditions(service, coerced_args, settled)
+            self._evaluate_postconditions(service, coerced_args, settled)
 
             return CommandEnvelope(
                 ok=True,

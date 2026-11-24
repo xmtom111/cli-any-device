@@ -44,6 +44,8 @@ def _format_risk_tag(svc: ServiceSpec) -> str:
         tags.append("lock-free")
     if svc.requires_confirm:
         tags.append("--confirm")
+    elif svc.confirm_if:
+        tags.append("conditional --confirm")
     return ", ".join(tags)
 
 
@@ -80,6 +82,11 @@ def render_skill_md(bundle: DeviceBundle) -> str:
         lines.append(
             "- Built-in `--target in_memory` runs an offline in-memory fake "
             "(no physical actuation)."
+        )
+    if any(profile.is_real_hardware for profile in dev.targets.values()):
+        lines.append(
+            "- Live changes on real hardware require a verified bundle and daemon startup "
+            "with `--allow-live-hardware`."
         )
     lines.extend(
         [
@@ -249,6 +256,7 @@ def render_cli_schema(bundle: DeviceBundle) -> dict[str, Any]:
                 "returns_summary": svc.returns_summary,
                 "risk_class": svc.risk_class.value,
                 "requires_confirm": svc.requires_confirm,
+                **({"confirm_if": list(svc.confirm_if)} if svc.confirm_if else {}),
                 "bypasses_action_lock": svc.bypasses_action_lock,
                 "expert_only": svc.expert_only,
                 "requires_capabilities": sorted(svc.requires_capabilities),
