@@ -287,12 +287,12 @@ def load_bundle(bundle_dir: Path) -> DeviceBundle:
     resolved = bundle_dir.resolve()
     device_raw = _load_yaml_mapping(resolved / "device.yaml")
     catalog_raw = _load_yaml_mapping(resolved / "catalog.yaml")
-    bundle = DeviceBundle(
-        device=_parse_device_spec(device_raw),
-        catalog=_parse_catalog_spec(catalog_raw),
-        source_dir=str(resolved),
-    )
-    return bundle
+    try:
+        device = _parse_device_spec(device_raw)
+        catalog = _parse_catalog_spec(catalog_raw)
+    except KeyError as exc:
+        raise BundleValidationError(f"Bundle YAML missing required field: {exc}") from exc
+    return DeviceBundle(device=device, catalog=catalog, source_dir=str(resolved))
 
 
 def validate_bundle(bundle: DeviceBundle) -> None:
