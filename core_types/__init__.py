@@ -25,7 +25,7 @@ from core_types.errors import (
     HardwareFaultError,
     UnsupportedCapabilityError,
 )
-from core_types.risk import RiskClass
+from core_types.risk import ConfirmMode, RiskClass
 from core_types.state import (
     ApiDialect,
     CanonicalMachineState,
@@ -47,6 +47,7 @@ __all__ = [
     "CatalogSpec",
     "CliAnyDeviceError",
     "CommandEnvelope",
+    "ConfirmMode",
     "DeckState",
     "DeviceBundle",
     "DeviceSpec",

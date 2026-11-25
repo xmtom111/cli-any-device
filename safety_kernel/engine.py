@@ -19,17 +19,20 @@ from core_types import (
     CanonicalMachineState,
     CliAnyDeviceError,
     CommandEnvelope,
+    ConfirmMode,
     DeviceBundle,
     ErrorCode,
     ErrorDetail,
     ExecutionMode,
     ExitCode,
     HardwareFaultError,
+    MachineLifecycle,
     RiskClass,
     ServiceSpec,
     TargetProfile,
     UnsupportedCapabilityError,
 )
+from safety_kernel.confirm import ApprovalStore, SessionLease, canonical_args_hash
 from safety_kernel.domains import DomainExtension, PreconditionContext, register_domains
 from safety_kernel.domains.labware_deck import LABWARE_DECK
 from safety_kernel.domains.motion_3d import MOTION_3D
@@ -67,6 +70,8 @@ class SafetyKernel:
         driver: ActionDriver,
         allow_live_hardware: bool = False,
         domains: DomainExtension = DEFAULT_DOMAINS,
+        confirm_mode: ConfirmMode = ConfirmMode.FLAG,
+        approvals: ApprovalStore | None = None,
     ) -> None:
         if target_name not in bundle.device.targets:
             raise ValueError(
@@ -80,12 +85,37 @@ class SafetyKernel:
         self._driver = driver
         self._allow_live_hardware = allow_live_hardware
         self._domains = domains
+        self._confirm_mode = confirm_mode
+        self._approvals = approvals if approvals is not None else ApprovalStore()
         self._action_lock = threading.Lock()
         self._last_state = CanonicalMachineState()
 
     @property
     def target_name(self) -> str:
         return self._target_name
+
+    def grant_lease(
+        self, max_risk: RiskClass, ttl_s: float, allowed_services: frozenset[str] | None = None
+    ) -> SessionLease:
+        with self._action_lock:
+            state = self._safe_poll()
+            if self._lease_blocked(state):
+                raise CliAnyDeviceError(
+                    ErrorCode.E_PRECONDITION_FAILED,
+                    "Cannot grant a lease while the target is halted, faulted, or unavailable.",
+                    step="grant_lease",
+                    exit_code=ExitCode.SAFETY_DENIED,
+                )
+            return self._approvals.grant_lease(
+                self._target_name, max_risk, ttl_s, allowed_services, state.state_seq
+            )
+
+    def lease_status(self) -> SessionLease | None:
+        if self._approvals.lease_status(self._target_name) is None:
+            return None
+        with self._action_lock:
+            self._safe_poll()
+            return self._approvals.lease_status(self._target_name)
 
     def invoke(
         self,
@@ -94,11 +124,16 @@ class SafetyKernel:
         args: dict[str, Any] | None = None,
         dry_run: bool = False,
         confirm: bool = False,
+        plan_id: str | None = None,
     ) -> CommandEnvelope:
         """Execute a catalog service through all safety gates and return a CommandEnvelope."""
         t0 = time.perf_counter()
         raw_args = dict(args or {})
         mode = ExecutionMode.DRY_RUN if dry_run else ExecutionMode.LIVE
+        if not dry_run and confirm and self._confirm_mode != ConfirmMode.FLAG:
+            return self._confirmation_error(
+                service_name, t0, self._last_state, "Use an approved plan ID or a session lease."
+            )
 
         service = self._bundle.catalog.services.get(service_name)
         if service is None:
@@ -129,6 +164,7 @@ class SafetyKernel:
                     "postconditions": list(service.postconditions),
                     "requires_confirm_when_live": False,
                     "timeout_s": service.timeout_s,
+                    **self._mint_plan(service, raw_args, state),
                 }
                 return CommandEnvelope(
                     ok=True,
@@ -141,6 +177,10 @@ class SafetyKernel:
                     data={"plan": abort_plan},
                     error=None,
                 )
+            if plan_id is not None:
+                state = self._safe_poll()
+                if not self._consume_plan(plan_id, service, raw_args, state):
+                    return self._invalid_plan(service, t0, state)
             return self._handle_lock_free_abort(service, mode, t0)
 
         try:
@@ -174,10 +214,10 @@ class SafetyKernel:
                 ),
             )
 
-        if dry_run:
-            return self._invoke_checked(service, coerced_args, mode, t0, confirm=confirm)
         with self._action_lock:
-            return self._invoke_checked(service, coerced_args, mode, t0, confirm=confirm)
+            return self._invoke_checked(
+                service, coerced_args, mode, t0, confirm=confirm, plan_id=plan_id
+            )
 
     def _invoke_checked(
         self,
@@ -187,8 +227,14 @@ class SafetyKernel:
         t0: float,
         *,
         confirm: bool,
+        plan_id: str | None,
     ) -> CommandEnvelope:
         state = self._safe_poll()
+        approved = mode == ExecutionMode.LIVE and plan_id is not None
+        if mode == ExecutionMode.LIVE and plan_id is not None and not self._consume_plan(
+            plan_id, service, coerced_args, state
+        ):
+            return self._invalid_plan(service, t0, state)
         if state.estop_latched and service.name not in ESTOP_ALLOWED_SERVICES:
             return self._error_envelope(
                 service_name=service.name,
@@ -257,6 +303,7 @@ class SafetyKernel:
                 "postconditions": list(service.postconditions),
                 "requires_confirm_when_live": needs_confirm,
                 "timeout_s": service.timeout_s,
+                **self._mint_plan(service, coerced_args, state),
             }
             return CommandEnvelope(
                 ok=True,
@@ -270,26 +317,56 @@ class SafetyKernel:
                 error=None,
             )
 
-        if needs_confirm and not confirm:
-            return self._error_envelope(
-                service_name=service.name,
-                mode=mode,
-                t0=t0,
-                exit_code=ExitCode.CONFIRM_REQUIRED,
-                state=state,
-                error=ErrorDetail(
-                    code=ErrorCode.E_CONFIRM_REQUIRED,
-                    step="confirm_gate",
-                    reason=(
-                        f"Service '{service.name}' ({service.risk_class.value}) requires "
-                        "explicit --confirm."
-                    ),
-                ),
+        lease = self._approvals.lease_status(self._target_name)
+        covered = lease is not None and lease.covers(service.name, service.risk_class)
+        if needs_confirm and not (confirm or approved or covered):
+            reason = (
+                "Pass --confirm."
+                if self._confirm_mode == ConfirmMode.FLAG
+                else "Use an approved plan ID or a session lease."
             )
+            return self._confirmation_error(service.name, t0, state, reason)
 
-        return self._execute_locked(service, coerced_args, target_coords, t0)
+        return self._execute_locked(service, coerced_args, target_coords, t0, state, lease)
+
+    def _mint_plan(
+        self, service: ServiceSpec, args: dict[str, Any], state: CanonicalMachineState
+    ) -> dict[str, Any]:
+        return self._approvals.mint_plan(
+            self._target_name, service.name, canonical_args_hash(args), state.state_seq
+        )
+
+    def _consume_plan(
+        self, plan_id: str, service: ServiceSpec, args: dict[str, Any], state: CanonicalMachineState
+    ) -> bool:
+        return self._approvals.consume_plan(
+            plan_id, self._target_name, service.name, canonical_args_hash(args), state.state_seq
+        )
+
+    def _invalid_plan(
+        self, service: ServiceSpec, t0: float, state: CanonicalMachineState
+    ) -> CommandEnvelope:
+        return self._confirmation_error(
+            service.name, t0, state, "Plan is unapproved, expired, used, or no longer matches."
+        )
+
+    def _confirmation_error(
+        self, service: str, t0: float, state: CanonicalMachineState, reason: str
+    ) -> CommandEnvelope:
+        return self._error_envelope(
+            service_name=service,
+            mode=ExecutionMode.LIVE,
+            t0=t0,
+            exit_code=ExitCode.CONFIRM_REQUIRED,
+            state=state,
+            error=ErrorDetail(
+                code=ErrorCode.E_CONFIRM_REQUIRED, step="confirm_gate", reason=reason
+            ),
+        )
 
     def _needs_confirmation(self, service: ServiceSpec, state: CanonicalMachineState) -> bool:
+        if self._confirm_mode != ConfirmMode.FLAG and service.risk_class != RiskClass.R0_READ:
+            return True
         if service.requires_confirm:
             return True
         if service.risk_class in self._profile.require_confirm_for_risks:
@@ -337,7 +414,11 @@ class SafetyKernel:
         mode: ExecutionMode,
         t0: float,
     ) -> CommandEnvelope:
-        abort_res = self._supervisor.abort_now()
+        self._approvals.revoke_lease(self._target_name)
+        try:
+            abort_res = self._supervisor.abort_now()
+        finally:
+            self._approvals.revoke_lease(self._target_name)
         state = self._safe_poll()
         return CommandEnvelope(
             ok=abort_res.sent,
@@ -363,12 +444,14 @@ class SafetyKernel:
         coerced_args: dict[str, Any],
         target_coords: dict[str, float] | None,
         t0: float,
+        state: CanonicalMachineState,
+        lease: SessionLease | None,
     ) -> CommandEnvelope:
         try:
             if service.name == "sys.detect":
                 identity = self._supervisor.detect()
                 settled = self._supervisor.poll_state()
-                self._last_state = settled
+                self._record_state(settled, lease)
                 self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
@@ -384,7 +467,7 @@ class SafetyKernel:
 
             if service.name == "sys.status":
                 settled = self._supervisor.poll_state()
-                self._last_state = settled
+                self._record_state(settled)
                 return CommandEnvelope(
                     ok=True,
                     service=service.name,
@@ -400,7 +483,7 @@ class SafetyKernel:
             if service.name == "sys.preflight":
                 report = self._supervisor.preflight()
                 settled = self._supervisor.poll_state()
-                self._last_state = settled
+                self._record_state(settled)
                 return CommandEnvelope(
                     ok=report.passed,
                     service=service.name,
@@ -421,7 +504,7 @@ class SafetyKernel:
 
             if service.name == "sys.reset_estop":
                 settled = self._supervisor.reset_estop()
-                self._last_state = settled
+                self._record_state(settled, lease)
                 self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
@@ -436,13 +519,12 @@ class SafetyKernel:
                 )
 
             # Domain action: submit via ActionDriver, then ALWAYS await_settled via Supervisor!
-            current_state = self._supervisor.poll_state()
             telemetry = self._driver.execute(
                 ActionRequest(
                     service=service.name,
                     args=coerced_args,
                     timeout_s=service.timeout_s,
-                    safe_z_mm=current_state.safe_z_mm,
+                    safe_z_mm=state.safe_z_mm,
                     target_coords=target_coords,
                     protocol=deepcopy(service.protocol),
                 )
@@ -466,7 +548,7 @@ class SafetyKernel:
                 )
 
             settled = self._supervisor.await_settled(service.timeout_s)
-            self._last_state = settled
+            self._record_state(settled, lease)
             self._evaluate_postconditions(service, coerced_args, settled)
 
             return CommandEnvelope(
@@ -539,6 +621,7 @@ class SafetyKernel:
                 ),
             )
         except HardwareFaultError as exc:
+            self._approvals.revoke_lease(self._target_name)
             fs = self._apply_fail_safe(service, exc.reason)
             return self._error_envelope(
                 service_name=service.name,
@@ -588,10 +671,28 @@ class SafetyKernel:
 
     def _safe_poll(self) -> CanonicalMachineState:
         try:
-            self._last_state = self._supervisor.poll_state()
+            state = self._supervisor.poll_state()
         except Exception:
-            return CanonicalMachineState()
-        return self._last_state
+            state = CanonicalMachineState(lifecycle=MachineLifecycle.DISCONNECTED)
+        self._record_state(state)
+        return state
+
+    @staticmethod
+    def _lease_blocked(state: CanonicalMachineState) -> bool:
+        return state.estop_latched or state.lifecycle in (
+            MachineLifecycle.DISCONNECTED, MachineLifecycle.FAULT, MachineLifecycle.HALTED,
+        )
+
+    def _record_state(
+        self, state: CanonicalMachineState, lease: SessionLease | None = None
+    ) -> None:
+        self._last_state = state
+        if self._lease_blocked(state):
+            self._approvals.revoke_lease(self._target_name)
+        elif lease is not None:
+            self._approvals.advance_lease(lease, state.state_seq)
+        else:
+            self._approvals.check_lease(self._target_name, state.state_seq)
 
     @staticmethod
     def _elapsed_ms(t0: float) -> int:
