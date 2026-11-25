@@ -43,6 +43,9 @@ packages = [
     "adapters",
 ]
 
+[tool.hatch.build.targets.wheel.force-include]
+"skills/cli-any-device-onboard/SKILL.md" = "cli/cli-any-device-onboard/SKILL.md"
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

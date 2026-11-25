@@ -31,7 +31,9 @@ from core_types import ConfirmMode, ErrorCode, ExitCode, RiskClass
 from daemon import DEFAULT_SOCKET_PATH, DaemonIPCClient
 from daemon.ipc import ipc_error, read_token_file, tcp_address, unix_path
 
+from . import mcp
 from .config import MANAGED_LISTEN, read_config, read_daemon, save_config, start_daemon, stop_daemon
+from .skills import install_skill
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
@@ -56,9 +58,12 @@ class CLIContext:
     plan_id: str | None
 
 
-def _load_schema_for_bundle(bundle_ref: str) -> dict[str, Any]:
+def _load_schema_for_bundle(bundle_ref: str, *, use_generated: bool = True) -> dict[str, Any]:
     bundle_dir = resolve_bundle_dir(bundle_ref, repo_root=REPO_ROOT)
     loaded = load_bundle(bundle_dir)
+    if not use_generated:
+        validate_bundle(loaded)
+        return render_cli_schema(loaded)
     schema_path = REPO_ROOT / "docs" / "generated" / loaded.device.device_id / "cli_schema.json"
     if schema_path.exists():
         parsed = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -454,6 +459,84 @@ def bundle_list_cmd() -> None:
         return
     for name in found:
         click.echo(name)
+
+
+@click.group(name="skill", context_settings=HELP_CONTEXT)
+def skill_group() -> None:
+    """Install skills for coding agents."""
+
+
+@skill_group.command(name="install", context_settings=HELP_CONTEXT)
+@click.argument("bundle", required=False)
+@click.option("--meta", is_flag=True, help="Install the device onboarding skill.")
+@click.option(
+    "--dest", default="all", show_default=True, help="claude, agents, all, or a directory.",
+)
+@click.option(
+    "--project-dir", default=".", type=click.Path(file_okay=False, path_type=Path),
+    help="Project directory for .claude and .agents installations.",
+)
+@click.pass_obj
+def skill_install_cmd(
+    state: CLIContext, bundle: str | None, meta: bool, dest: str, project_dir: Path,
+) -> None:
+    """Install a bundle skill or the onboarding skill."""
+    bundle_ref = bundle or state.bundle
+    try:
+        if meta and bundle is not None:
+            raise ValueError("Choose either BUNDLE or --meta.")
+        if not meta and not bundle_ref:
+            raise ValueError("Pass BUNDLE or --meta, or save a default with cli-device use.")
+        name, paths = install_skill(
+            None if meta else bundle_ref, dest=dest, project_dir=project_dir, repo_root=REPO_ROOT,
+        )
+    except (ValueError, OSError) as exc:
+        if state.as_json:
+            _finish(state, ipc_error(
+                ErrorCode.E_INVALID_ARGS, ExitCode.INVALID_USAGE, "skill_install", str(exc),
+                service="skill.install",
+            ))
+        raise click.UsageError(str(exc)) from exc
+
+    if state.as_json:
+        click.echo(json.dumps({"ok": True, "skill": name, "paths": [str(path) for path in paths]}))
+    else:
+        for path in paths:
+            click.echo(f"Installed {path}")
+
+
+@click.group(name="mcp", context_settings=HELP_CONTEXT)
+def mcp_group() -> None:
+    """Expose device services to MCP clients."""
+
+
+@mcp_group.command(name="serve", context_settings=HELP_CONTEXT)
+@click.option("--bundle", help="Device bundle name or directory path.")
+@click.option("--target", help="Execution target from device.yaml.")
+@click.pass_obj
+def mcp_serve_cmd(state: CLIContext, bundle: str | None, target: str | None) -> None:
+    """Serve MCP tools over stdio."""
+    state.bundle = bundle or state.bundle
+    target = target or state.target
+    if not state.bundle or not target:
+        raise click.UsageError("Pass --bundle and --target or save defaults with cli-device use.")
+
+    def dispatch(
+        service: str, args: dict[str, Any], dry_run: bool, plan_id: str | None,
+    ) -> dict[str, Any]:
+        try:
+            return _call_daemon(
+                state, service=service, target=target, args=args, dry_run=dry_run,
+                plan_id=plan_id, confirm=False,
+            )
+        except (click.ClickException, OSError, ValueError) as exc:
+            raise mcp.RPCError(-32603, str(exc)) from exc
+
+    try:
+        schema = _load_schema_for_bundle(state.bundle, use_generated=False)
+        mcp.serve(schema, dispatch, sys.stdin.buffer, sys.stdout.buffer)
+    except (ValueError, OSError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @click.command(name="approve", context_settings=HELP_CONTEXT)
@@ -855,6 +938,8 @@ def build_cli_app() -> click.Group:
         )
 
     app.add_command(bundle_group)
+    app.add_command(skill_group)
+    app.add_command(mcp_group)
     app.add_command(approve_cmd)
     app.add_command(lease_group)
     app.add_command(use_cmd)

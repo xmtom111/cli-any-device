@@ -61,7 +61,10 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
                 f"Hardcoded secret/default password detected in {path.name}; "
                 "supply credentials via environment variables or local config only."
             )
-    parsed = yaml.safe_load(raw_text)
+    try:
+        parsed = yaml.safe_load(raw_text)
+    except yaml.YAMLError as exc:
+        raise BundleValidationError(f"Invalid YAML in {path}: {exc}") from exc
     if not isinstance(parsed, dict):
         raise BundleValidationError(f"{path} must contain a top-level YAML mapping.")
     return parsed
