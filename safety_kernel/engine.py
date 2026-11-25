@@ -17,6 +17,7 @@ from core_types import (
     AdapterTimeoutError,
     AdapterTransportError,
     CanonicalMachineState,
+    CliAnyDeviceError,
     CommandEnvelope,
     DeviceBundle,
     ErrorCode,
@@ -80,6 +81,7 @@ class SafetyKernel:
         self._allow_live_hardware = allow_live_hardware
         self._domains = domains
         self._action_lock = threading.Lock()
+        self._last_state = CanonicalMachineState()
 
     @property
     def target_name(self) -> str:
@@ -149,7 +151,7 @@ class SafetyKernel:
                 mode=mode,
                 t0=t0,
                 exit_code=rej.exit_code,
-                state=self._safe_poll(),
+                state=self._last_state,
                 error=ErrorDetail(code=rej.code, step=rej.step, reason=rej.reason),
             )
 
@@ -366,6 +368,7 @@ class SafetyKernel:
             if service.name == "sys.detect":
                 identity = self._supervisor.detect()
                 settled = self._supervisor.poll_state()
+                self._last_state = settled
                 self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
@@ -381,6 +384,7 @@ class SafetyKernel:
 
             if service.name == "sys.status":
                 settled = self._supervisor.poll_state()
+                self._last_state = settled
                 return CommandEnvelope(
                     ok=True,
                     service=service.name,
@@ -396,6 +400,7 @@ class SafetyKernel:
             if service.name == "sys.preflight":
                 report = self._supervisor.preflight()
                 settled = self._supervisor.poll_state()
+                self._last_state = settled
                 return CommandEnvelope(
                     ok=report.passed,
                     service=service.name,
@@ -416,6 +421,7 @@ class SafetyKernel:
 
             if service.name == "sys.reset_estop":
                 settled = self._supervisor.reset_estop()
+                self._last_state = settled
                 self._evaluate_postconditions(service, coerced_args, settled)
                 return CommandEnvelope(
                     ok=True,
@@ -460,6 +466,7 @@ class SafetyKernel:
                 )
 
             settled = self._supervisor.await_settled(service.timeout_s)
+            self._last_state = settled
             self._evaluate_postconditions(service, coerced_args, settled)
 
             return CommandEnvelope(
@@ -546,6 +553,15 @@ class SafetyKernel:
                     fail_safe_applied=fs,
                 ),
             )
+        except CliAnyDeviceError as exc:
+            return self._error_envelope(
+                service_name=service.name,
+                mode=ExecutionMode.LIVE,
+                t0=t0,
+                exit_code=exc.exit_code,
+                state=self._last_state,
+                error=ErrorDetail(code=exc.code, step=exc.step, reason=exc.reason),
+            )
         except Exception as exc:
             fs = self._apply_fail_safe(service, str(exc))
             return self._error_envelope(
@@ -565,13 +581,17 @@ class SafetyKernel:
     def _apply_fail_safe(self, service: ServiceSpec, reason: str) -> str | None:
         if not service.fail_safe or service.fail_safe == "none":
             return None
-        return self._driver.apply_fail_safe(service.fail_safe, reason)
+        try:
+            return self._driver.apply_fail_safe(service.fail_safe, reason)
+        except CliAnyDeviceError as exc:
+            return f"{service.fail_safe} failed: {exc.reason}"
 
     def _safe_poll(self) -> CanonicalMachineState:
         try:
-            return self._supervisor.poll_state()
+            self._last_state = self._supervisor.poll_state()
         except Exception:
             return CanonicalMachineState()
+        return self._last_state
 
     @staticmethod
     def _elapsed_ms(t0: float) -> int:

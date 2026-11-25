@@ -28,6 +28,9 @@ cli-device-d = "daemon.main:main"
 duet_rrf = "adapters.duet_rrf:create_adapter"
 mujoco_twin = "adapters.mujoco_twin:create_adapter"
 grbl_sim = "adapters.grbl_sim:create_adapter"
+scpi_generic = "adapters.scpi_generic:create_adapter"
+http_json = "adapters.http_json:create_adapter"
+moonraker_http = "adapters.moonraker_http:create_adapter"
 
 [tool.hatch.build.targets.wheel]
 packages = [

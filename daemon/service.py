@@ -65,6 +65,7 @@ class DeviceDaemon:
                 target=target_name,
                 endpoint=endpoint,
                 options={
+                    "safe_z_mm": self._bundle.device.default_safe_z_mm,
                     **profile.adapter_options,
                     "capabilities": sorted(profile.capabilities),
                     "is_real_hardware": profile.is_real_hardware,
