@@ -166,7 +166,9 @@ def test_generated_skill_documents_prerequisites_and_distinguishes_in_memory(
 # --- Defect #6: Root packaging exposes adapter entry points in project .venv ---
 
 
-def test_root_package_exposes_adapter_entry_points_and_daemon_resolves_targets() -> None:
+def test_root_package_exposes_adapter_entry_points_and_daemon_resolves_targets(
+    autodna_targets: tuple[str, ...],
+) -> None:
     eps = {ep.name: ep.value for ep in metadata.entry_points(group=ADAPTER_ENTRY_POINT_GROUP)}
     assert {"duet_rrf", "mujoco_twin", "grbl_sim"} <= set(eps)
 
@@ -177,7 +179,7 @@ def test_root_package_exposes_adapter_entry_points_and_daemon_resolves_targets()
 
     daemon = DeviceDaemon(bundle=load_bundle(JUBILEE_BUNDLE_DIR), registry=registry)
     try:
-        for target in ("mujoco_twin", "grbl_sim", "duet_real"):
+        for target in (*autodna_targets, "duet_real"):
             env = daemon.dispatch(target=target, service="sys.status")
             assert env.error is None or env.error.code != ErrorCode.E_UNKNOWN_TARGET
             assert env.ok is True

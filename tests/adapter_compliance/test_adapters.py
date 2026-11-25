@@ -35,7 +35,7 @@ def dispatch(driver, service, **args):
 
 
 @pytest.fixture
-def grbl():
+def grbl(require_autodna):
     pair = grbl_factory(AdapterConfig("grbl_sim", options={"time_scale": 30}))
     try:
         yield pair
@@ -51,7 +51,11 @@ def grbl():
         ("grbl_sim", grbl_factory),
     ],
 )
-def test_shared_spi(target, factory):
+def test_shared_spi(target, factory, request):
+    if target == "mujoco_twin":
+        request.getfixturevalue("require_mujoco")
+    elif target == "grbl_sim":
+        request.getfixturevalue("require_autodna")
     pair = factory(AdapterConfig(target))
     try:
         assert pair.target == target
@@ -101,6 +105,7 @@ def test_grbl_is_not_jubilee(grbl, monkeypatch):
     assert before.tool_locked is None
 
 
+@pytest.mark.usefixtures("require_mujoco")
 def test_twin_workflow():
     twin = twin_factory(AdapterConfig("mujoco_twin"))
     driver, supervisor = twin.driver, twin.supervisor
@@ -137,6 +142,7 @@ def test_twin_workflow():
     assert parked.tool_locked is False
 
 
+@pytest.mark.usefixtures("require_autodna")
 def test_grbl_abort_while_home_action_waits():
     pair = grbl_factory(AdapterConfig("grbl_sim", options={"time_scale": 0.01}))
     driver, supervisor = pair.driver, pair.supervisor
@@ -182,6 +188,7 @@ def test_grbl_ack_is_not_completion_and_abort_stops_diagonal(grbl):
     assert supervisor.poll_state().position == stopped.position
 
 
+@pytest.mark.usefixtures("require_mujoco")
 def test_twin_abort_while_geometry_is_blocked():
     twin = twin_factory(AdapterConfig("mujoco_twin"))
     driver, supervisor = twin.driver, twin.supervisor

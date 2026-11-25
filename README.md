@@ -6,124 +6,106 @@
 <p align="center"><strong>Let AI drive all your devices</strong></p>
 
 <p align="center">
-  Turn any hardware with an accessible interface (serial, Ethernet HTTP, TCP/SCPI, or a Python host API) plus its manual or host software into a declarative device pack, a safety-gated AI CLI (<code>cli-device</code> + <code>cli-device-d</code>), a short agent <code>SKILL.md</code>, and a human <code>HOOKUP.md</code>.
+  <a href="https://github.com/xmtom111/cli-any-device/actions/workflows/ci.yml"><img src="https://github.com/xmtom111/cli-any-device/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT license" /></a>
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB" alt="Python 3.11+" />
 </p>
+
+Turn a device manual or Python host API into a YAML bundle, a safety-gated CLI, an agent skill, and a hookup guide. The daemon checks capabilities, limits, and approvals before dispatching actions through an adapter.
+
+**Status.** Offline, simulation, and loopback test paths are verified. End-to-end validation on physical hardware has yet to be completed. The devices under `tests/fixtures/` are synthetic offline fixtures.
 
 <p align="center">
-  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
-  <img src="https://img.shields.io/badge/typing-mypy%20strict-22D3EE?style=flat-square" alt="mypy strict" />
-  <img src="https://img.shields.io/badge/lint-ruff-34D399?style=flat-square" alt="ruff" />
-  <img src="https://img.shields.io/badge/status-offline%20%26%20sim%20verified-F59E0B?style=flat-square" alt="Status: offline and sim verified" />
+  <img src="docs/assets/demo-terminal.gif" alt="Recorded terminal session with the in-memory Jubilee target" width="92%" />
 </p>
-
----
-
-## Live Terminal Demo (Real Offline Session)
-
-Recorded directly from `.venv/bin/cli-device` + `.venv/bin/cli-device-d` against the built-in `in_memory` target (`--help`, `sys detect`, `--dry-run`, `--confirm` gating, and `--dry-run sys abort`; raw transcript in [`docs/assets/demo-transcript.json`](docs/assets/demo-transcript.json)):
-
-<p align="center">
-  <img src="docs/assets/demo-terminal.gif" alt="CLI-Any-Device real terminal demo" width="92%" />
-</p>
-
-## Why It Exists
-
-Hardware interfaces are fragmented and dangerous for AI agents: letting an agent read raw firmware manuals or emit raw G-code/SCPI wastes context and invites unsafe actuation. **CLI-Any-Device** compiles device specifications into a small declarative pack and executes every command through one shared, device-agnostic safety kernel—without modifying vendor firmware.
-
-## Honest Status & Scope
-
-> **Current status:** Software, offline `in_memory` fake, and local simulation paths (`mujoco_twin`, `grbl_sim`, and loopback HTTP fixtures for `duet_rrf`) are implemented and tested. **End-to-end validation on physical hardware has not been completed yet**—do not treat this repository as field-certified for unattended actuation on real machines.
-
-- **Fixtures vs. product:** `bundles/jubilee/` is the first complex verification fixture, not a Jubilee-only product.
-- **Synthetic offline fixtures:** `tests/fixtures/` (`grbl_engraver`, `scpi_psu`, `open_radio`) are **synthetic offline test fixtures** used to verify generic onboarding. `OpenRadio-100` is **not** a real purchasable radio, and this project does not encourage RF transmission without proper authorization and a matched load/antenna.
-
-## How It Works
-
-<p align="center">
-  <img src="docs/assets/architecture.png" alt="CLI-Any-Device build-time and runtime architecture" width="100%" />
-</p>
-
-1. **Draft a device pack:** `cli-device bundle draft` inspects a manual and/or Python host API (via safe AST parsing—vendor code is never executed) to emit `device.yaml` + `catalog.yaml`.
-2. **Compile artifacts:** `cli-device bundle build` validates schemas/limits and compiles `SKILL.md`, `HOOKUP.md`, and `cli_schema.json` (`--check` fails CI on drift).
-3. **Run through the safety kernel:** thin `cli-device` sends JSON over local Unix IPC to `cli-device-d`, which enforces R0–R4 gates, bounds, `--dry-run`, `--confirm`, completion barriers, and lock-free abort before calling pluggable `adapters/*`.
-4. **No firmware changes:** adapters implement `SupervisorChannel` + `ActionDriver` (`adapter_spi/`) and only translate existing device interfaces.
 
 ## Install
 
-Requires Python 3.11+.
+Requires Python 3.11+. Choose either tool installer.
 
 ```bash
-uv venv --python 3.13 .venv
-uv pip install --python .venv/bin/python -e ".[dev]"
+uv tool install 'git+https://github.com/xmtom111/cli-any-device.git'
+pipx install 'git+https://github.com/xmtom111/cli-any-device.git'
 ```
 
-## Quickstart (Verified Offline)
+To install a local wheel, build it with `uv build --wheel` in the checkout and pass the wheel path to `uv tool install` or `pipx install`.
 
-### 1. Run `cli-device-d` + `cli-device` against the built-in `in_memory` target
+For development, run from the repository root.
 
 ```bash
-# Terminal 1: start the safety daemon (stop cleanly with Ctrl-C or SIGTERM)
-.venv/bin/cli-device-d --bundle jubilee --socket /tmp/cli-device-demo.sock
-
-# Terminal 2: inspect commands, detect, dry-run, confirm, and check status
-.venv/bin/cli-device --bundle jubilee --help
-.venv/bin/cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device-demo.sock --json sys detect
-.venv/bin/cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device-demo.sock --json sys preflight
-.venv/bin/cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device-demo.sock --json --dry-run motion home-all
-.venv/bin/cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device-demo.sock --json --confirm motion home-all
-.venv/bin/cli-device --bundle jubilee --target in_memory --socket /tmp/cli-device-demo.sock sys status
+uv venv .venv
+source .venv/bin/activate
+uv pip install -e '.[dev]'
 ```
 
-### 2. Draft & compile a new device pack from a manual + Python host API
+## Quickstart
+
+From a checkout, use the Jubilee bundle with its offline `in_memory` target.
 
 ```bash
-.venv/bin/cli-device bundle draft \
-  --name bench_psu \
-  --display-name "Synthetic SCPI PSU Fixture" \
-  --kind instrument \
-  --interface tcp_scpi \
-  --endpoint tcp://192.168.10.50:5025 \
-  --manual tests/fixtures/scpi_psu/manual.md \
-  --host-api tests/fixtures/scpi_psu/psu_host.py \
-  --output /tmp/bench_psu_bundle
-
-.venv/bin/cli-device bundle validate /tmp/bench_psu_bundle
-.venv/bin/cli-device bundle build /tmp/bench_psu_bundle --output-dir /tmp/bench_psu_gen
-.venv/bin/cli-device bundle build /tmp/bench_psu_bundle --output-dir /tmp/bench_psu_gen --check
-.venv/bin/cli-device --bundle /tmp/bench_psu_bundle --help
+cli-device use ./bundles/jubilee --target in_memory
+cli-device up
+cli-device sys detect
+cli-device --dry-run motion home-all
+cli-device --confirm motion home-all
+cli-device sys status
+cli-device down
 ```
 
-## Safety Boundaries
+`cli-device use` saves the bundle and target. With saved defaults, a command auto-starts the daemon when needed. Use `cli-device up` and `cli-device down` to manage it explicitly, or `--no-auto-start` to suppress auto-start for a command.
 
-| Mechanism | Behavior |
-|---|---|
-| **R0–R4 & Default Deny** | Unknown state, unhomed motion, out-of-bounds parameters, forbidden zones, and unsafe Z are rejected before `ActionDriver.execute()` (exit `3`). |
-| **`--dry-run` & `--confirm`** | `--dry-run` checks gates and prints a plan with zero actuation (including `--dry-run sys abort`); high-risk actions require `--confirm` (exit `4`). |
-| **Completion Barrier** | Command acceptance (e.g. HTTP 200 on Duet `/rr_gcode`) is never treated as completion; live adapters wait in `SupervisorChannel.await_settled()` (`M400` + object model `idle` on Duet/RRF), verify postconditions, and apply catalog `fail_safe` on failure. |
-| **Lock-Free Abort vs. Physical E-Stop** | `sys abort` bypasses the action mutex (`< 100 ms` target) and latches e-stop (exit `99`). **Software abort never disconnects mains/motor power and never replaces a tested physical emergency stop.** |
-| **Honest Capabilities** | Capability-limited targets (e.g. `grbl_sim`, which is not a real Jubilee) reject unsupported verbs with `E_UNSUPPORTED_CAPABILITY` (exit `2`) instead of faking success. |
+The managed daemon defaults to authenticated loopback TCP on an automatically assigned port. To choose a port, pass `--listen tcp://127.0.0.1:<port>` to `cli-device up` or `cli-device-d`. The CLI reuses the managed daemon's bearer token. For a manually started daemon, supply the same token to both sides via `--token-file` or `CLI_DEVICE_IPC_TOKEN`. Unix sockets are also supported.
 
-**Exit codes:** `0` OK / dry-run verified · `1` execution fault (fail-safe applied) · `2` usage / schema / unsupported capability · `3` safety denied · `4` `--confirm` required · `5` timeout / daemon unavailable · `99` e-stop latched
+### Human approval
 
-## Repository Layout
+Start the daemon with `--confirm-mode=tty` (the default) or `--confirm-mode=token`. For a one-off action, a human can use `--confirm` in an interactive terminal. For an agent workflow, preview the action with `--dry-run`, have a human run `cli-device approve <plan_id>` in an interactive terminal, then repeat the same action with `--plan-id <plan_id>`. Plans are single-use and bound to the target, arguments, and machine state.
+
+For repeated actions, a human can use `cli-device lease grant` with a target, a TTL in seconds, a maximum risk, and optional `--allow-service` restrictions. Use `cli-device lease status` and `cli-device lease revoke` to inspect or end the lease.
+
+### Live hardware
+
+Unlocking mutations on a real target requires both `review_status: verified` in `device.yaml` and `cli-device-d --allow-live-hardware` (also available via `cli-device up --allow-live-hardware`). Approval, capability, and safety checks still apply.
+
+## Device bundles and adapters
+
+`cli-device bundle draft` reads manuals and parses Python host APIs without executing vendor code. Review the resulting `device.yaml` and `catalog.yaml`, then run `cli-device bundle build <bundle>` to validate them and generate `SKILL.md`, `HOOKUP.md`, and `cli_schema.json`.
+
+The config-driven `scpi_generic`, `http_json`, and `moonraker_http` adapters use YAML for supported devices, with zero per-device Python. Choose an adapter and set target-level `adapter_options` in `device.yaml`. Define each service's protocol mapping in the catalog's `protocol` block. The synthetic SCPI supply shows both files. See the [SCPI fixture bundle](tests/fixtures/scpi_psu/bundle/) and [all six adapters](adapters/README.md).
+
+<p align="center">
+  <img src="docs/assets/architecture.png" alt="Build-time and runtime architecture" width="100%" />
+</p>
+
+The daemon runs each action through the shared safety kernel. The kernel validates state and bounds, waits for the adapter's completion barrier, and checks postconditions. Software abort bypasses the action lock. Physical emergency stops are handled at the machine.
+
+## Agent integration
+
+- `cli-device skill install <bundle>` installs the bundle's skill. `cli-device skill install --meta` installs the device onboarding skill. Both default to writing `SKILL.md` under `.claude/skills/` and `.agents/skills/` in the current project.
+- `cli-device mcp serve` runs a pure-stdlib stdio MCP server using the selected bundle and target. It exposes catalog services through the daemon and excludes `R4_EXPERT` and the `expert` group. Tools support dry runs and approved plan IDs.
+
+## Repository layout
 
 | Path | Role |
-|---|---|
-| `core_types/` | Pure domain types, risk classes, error/exit codes (zero I/O) |
-| `adapter_spi/` | `SupervisorChannel` & `ActionDriver` protocols + `InMemoryFakeAdapter` |
-| `compiler/` | Bundle loader/validator, AST+manual drafter, `SKILL.md`/`HOOKUP.md`/`cli_schema.json` compiler |
-| `safety_kernel/` | Device-agnostic R0–R4 gate, preconditions, completion & fail-safe |
-| `daemon/` | `cli-device-d` Unix socket IPC server and lazy `cli_any_device.adapters` registry |
-| `cli/` | Thin schema-driven `cli-device` frontend and `bundle` toolchain |
-| `bundles/jubilee/` | Hand-authored Jubilee verification fixture (`docs/generated/jubilee/` is compiled output) |
-| `adapters/` | Pluggable adapters (`duet_rrf`, `mujoco_twin`, `grbl_sim`), isolated from core |
-| `docs/assets/` | Hero banner, architecture diagram, and reproducible terminal demo GIF sources |
+| --- | --- |
+| `core_types/`, `adapter_spi/` | Shared contracts and the in-memory adapter |
+| `compiler/` | Bundle drafting, validation, and artifact generation |
+| `safety_kernel/` | Risk gates, approval checks, completion, and fail-safe policies |
+| `daemon/`, `cli/` | IPC, adapter discovery, and user and agent commands |
+| `adapters/` | Six built-in protocol and simulation plugins |
+| `bundles/jubilee/`, `docs/generated/jubilee/` | Jubilee example bundle and its generated files |
+| `skills/` | Agent onboarding skill |
+| `tests/` | Runtime, adapter, and architecture tests plus synthetic fixtures |
+| `docs/assets/` | Banner, architecture diagram, and recorded offline demo |
 
 ## Verification
 
+Run from the checkout with the development environment active.
+
 ```bash
-.venv/bin/pytest -v
-.venv/bin/mypy
-.venv/bin/ruff check core_types adapter_spi compiler safety_kernel daemon cli tests/test_import_dag.py tests/test_contracts_and_spi.py tests/test_compiler.py tests/test_safety_kernel.py tests/test_daemon_and_cli.py tests/test_framework_fixes_and_fixtures.py
-.venv/bin/cli-device bundle build jubilee --check
+pytest -v
+mypy
+ruff check
+cli-device bundle build jubilee --check
 ```
+
+External simulator tests require a local checkout configured via `CLI_ANY_DEVICE_AUTODNA_ROOT`. See the [adapter constraints](docs/adapter-constraints.md) for simulator dependencies.

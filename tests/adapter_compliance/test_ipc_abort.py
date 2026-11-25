@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 
+import pytest
 from adapters.grbl_sim import create_adapter
 
 from adapter_spi import ABORT_LATENCY_SLA_MS, AdapterConfig
@@ -18,6 +19,7 @@ from daemon.service import DeviceDaemon
 _BUNDLE = Path(__file__).resolve().parents[2] / "bundles" / "jubilee"
 
 
+@pytest.mark.usefixtures("require_autodna")
 def test_second_process_aborts_grbl_diagonal():
     pair = create_adapter(AdapterConfig("grbl_sim", options={"time_scale": 30}))
     registry = AdapterRegistry(load_entry_points=False)

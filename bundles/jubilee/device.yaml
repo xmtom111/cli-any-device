@@ -220,4 +220,4 @@ targets:
     require_confirm_for_risks:
       - "R3_PHYSICAL_INIT"
       - "R4_EXPERT"
-    notes: "In-memory fake adapter for Phase 0 contract, compiler, safety_kernel, daemon, and CLI closed-loop verification."
+    notes: "In-memory fake adapter for offline contract, compiler, safety_kernel, daemon, and CLI closed-loop verification."

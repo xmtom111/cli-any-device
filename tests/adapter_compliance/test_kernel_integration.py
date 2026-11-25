@@ -1,6 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 import yaml
 from adapters.grbl_sim import create_adapter as grbl_factory
 from adapters.mujoco_twin import create_adapter as twin_factory
@@ -16,6 +17,7 @@ from safety_kernel.engine import SafetyKernel
 _BUNDLE = Path(__file__).resolve().parents[2] / "bundles" / "jubilee"
 
 
+@pytest.mark.usefixtures("require_mujoco")
 def test_twin_kernel_workflow_dry_run_and_rejections(monkeypatch):
     pair = twin_factory(AdapterConfig("mujoco_twin"))
     kernel = SafetyKernel(
@@ -56,6 +58,7 @@ def test_twin_kernel_workflow_dry_run_and_rejections(monkeypatch):
     assert pair.supervisor.poll_state().active_tool is None
 
 
+@pytest.mark.usefixtures("require_autodna")
 def test_grbl_kernel_homing_and_capability_gate(monkeypatch):
     pair = grbl_factory(AdapterConfig("grbl_sim", options={"time_scale": 30}))
     try:
@@ -82,11 +85,11 @@ def test_grbl_kernel_homing_and_capability_gate(monkeypatch):
         pair.close()
 
 
-def test_root_install_discovers_builtin_adapters(monkeypatch):
+def test_root_install_discovers_builtin_adapters(monkeypatch, autodna_targets):
     monkeypatch.delenv("CLI_ANY_DEVICE_DUET_PASSWORD", raising=False)
     daemon = DeviceDaemon(bundle=load_bundle(_BUNDLE))
     try:
-        for target in ("mujoco_twin", "grbl_sim", "duet_real"):
+        for target in (*autodna_targets, "duet_real"):
             detected = daemon.dispatch(target=target, service="sys.detect")
             assert detected.ok, detected.error
             assert detected.state["detected"]
@@ -98,6 +101,7 @@ def test_root_install_discovers_builtin_adapters(monkeypatch):
         daemon.close()
 
 
+@pytest.mark.usefixtures("require_autodna")
 def test_engraver_draft_dispatches_through_grbl_emulator(tmp_path, monkeypatch):
     fixture = _BUNDLE.parents[1] / "tests" / "fixtures" / "grbl_engraver"
     draft_bundle(

@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install development dependencies
+        run: python -m pip install -e '.[dev]' build
+      - run: pytest -v
+      - run: mypy
+      - run: ruff check
+      - run: cli-device bundle build jubilee --check
+      - name: Build and smoke-test the wheel
+        run: |
+          python -m build --wheel --outdir "$RUNNER_TEMP/cad-dist"
+          python -m venv "$RUNNER_TEMP/cad-smoke"
+          smoke_bin="$RUNNER_TEMP/cad-smoke/bin"
+          "$smoke_bin/python" -m pip install "$RUNNER_TEMP"/cad-dist/*.whl
+          cd /tmp
+          "$smoke_bin/cli-device" --help
+          "$smoke_bin/cli-device-d" --help
+          "$smoke_bin/cli-device" skill install --meta --dest /tmp/ci-skills
+          test -s /tmp/ci-skills/cli-any-device-onboard/SKILL.md
+          "$smoke_bin/python" - <<'PY'
+          from importlib.metadata import entry_points
+
+          adapters = entry_points(group="cli_any_device.adapters")
+          assert {ep.name for ep in adapters} == {
+              "duet_rrf", "grbl_sim", "http_json", "moonraker_http", "mujoco_twin", "scpi_generic",
+          }
+          assert all(callable(ep.load()) for ep in adapters)
+          PY
