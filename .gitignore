@@ -5,7 +5,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .tmp/
-logs/*.out
-logs/*.err
-logs/*.pid
+logs/
+dist/
+build/
+*.egg-info/
 .cache/

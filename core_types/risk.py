@@ -5,6 +5,12 @@ from __future__ import annotations
 from enum import StrEnum
 
 
+class ConfirmMode(StrEnum):
+    TTY = "tty"
+    TOKEN = "token"
+    FLAG = "flag"
+
+
 class RiskClass(StrEnum):
     """Risk classes defined in Technical Roadmap Section 6.1."""
 

@@ -161,3 +161,19 @@ def test_validator_rejects_hardcoded_default_password(tmp_path: Path) -> None:
     with pytest.raises(BundleValidationError):
         bundle = load_bundle(bad_dir)
         validate_bundle(bundle)
+
+
+def test_loader_reports_missing_nested_fields_as_bundle_validation_error(tmp_path: Path) -> None:
+    bad_dir = tmp_path / "missing_hookup_key"
+    bad_dir.mkdir()
+    (bad_dir / "device.yaml").write_text(
+        "device_id: demo\ndisplay_name: Demo\nversion: '1.0'\nhookup:\n  estop_policy: Stop.\n",
+        encoding="utf-8",
+    )
+    (bad_dir / "catalog.yaml").write_text(
+        "device_id: demo\nversion: '1.0'\nservices:\n"
+        "  - name: sys.detect\n    risk_class: R0_READ\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(BundleValidationError, match="primary_interface"):
+        load_bundle(bad_dir)

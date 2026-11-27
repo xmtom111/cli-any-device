@@ -61,7 +61,10 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
                 f"Hardcoded secret/default password detected in {path.name}; "
                 "supply credentials via environment variables or local config only."
             )
-    parsed = yaml.safe_load(raw_text)
+    try:
+        parsed = yaml.safe_load(raw_text)
+    except yaml.YAMLError as exc:
+        raise BundleValidationError(f"Invalid YAML in {path}: {exc}") from exc
     if not isinstance(parsed, dict):
         raise BundleValidationError(f"{path} must contain a top-level YAML mapping.")
     return parsed
@@ -74,6 +77,14 @@ def _parse_risk(raw: Any, context: str) -> RiskClass:
         raise BundleValidationError(f"Invalid risk_class {raw!r} in {context}.") from exc
 
 
+def _parse_options(raw: Any, context: str) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict) or not all(isinstance(key, str) for key in raw):
+        raise BundleValidationError(f"{context} must be a mapping with string keys.")
+    return dict(raw)
+
+
 def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
     try:
         device_id = str(raw["device_id"]).strip()
@@ -83,7 +94,7 @@ def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
         raise BundleValidationError(f"device.yaml missing required field: {exc}") from exc
 
     device_kind = str(raw.get("device_kind", "generic_machine")).strip()
-    review_status = str(raw.get("review_status", "verified")).strip()
+    review_status = str(raw.get("review_status", "draft")).strip()
     hardware_ref = {str(k): str(v) for k, v in dict(raw.get("hardware_ref") or {}).items()}
     source_inputs = dict(raw.get("source_inputs") or {})
 
@@ -190,6 +201,9 @@ def _parse_device_spec(raw: dict[str, Any]) -> DeviceSpec:
                 str(t_raw["default_endpoint"]) if t_raw.get("default_endpoint") else None
             ),
             notes=str(t_raw.get("notes", "")).strip(),
+            adapter_options=_parse_options(
+                t_raw.get("adapter_options"), f"Target {target_name!r} adapter_options"
+            ),
         )
 
     return DeviceSpec(
@@ -227,6 +241,11 @@ def _parse_catalog_spec(raw: dict[str, Any]) -> CatalogSpec:
         name = str(item["name"]).strip()
         if name in services:
             raise BundleValidationError(f"Duplicate service definition: {name!r}")
+        confirm_if = item.get("confirm_if", [])
+        if not isinstance(confirm_if, list) or not all(
+            isinstance(rule, str) and rule.strip() for rule in confirm_if
+        ):
+            raise BundleValidationError(f"Service {name!r} confirm_if must be a list of rules.")
         args = tuple(
             ArgSpec(
                 name=str(a["name"]),
@@ -257,6 +276,8 @@ def _parse_catalog_spec(raw: dict[str, Any]) -> CatalogSpec:
             bypasses_action_lock=bool(item.get("bypasses_action_lock", False)),
             expert_only=bool(item.get("expert_only", False)),
             returns_summary=str(item.get("returns_summary", "")).strip(),
+            confirm_if=tuple(rule.strip() for rule in confirm_if),
+            protocol=_parse_options(item.get("protocol"), f"Service {name!r} protocol"),
         )
     return CatalogSpec(device_id=device_id, version=version, services=services)
 
@@ -266,12 +287,12 @@ def load_bundle(bundle_dir: Path) -> DeviceBundle:
     resolved = bundle_dir.resolve()
     device_raw = _load_yaml_mapping(resolved / "device.yaml")
     catalog_raw = _load_yaml_mapping(resolved / "catalog.yaml")
-    bundle = DeviceBundle(
-        device=_parse_device_spec(device_raw),
-        catalog=_parse_catalog_spec(catalog_raw),
-        source_dir=str(resolved),
-    )
-    return bundle
+    try:
+        device = _parse_device_spec(device_raw)
+        catalog = _parse_catalog_spec(catalog_raw)
+    except KeyError as exc:
+        raise BundleValidationError(f"Bundle YAML missing required field: {exc}") from exc
+    return DeviceBundle(device=device, catalog=catalog, source_dir=str(resolved))
 
 
 def validate_bundle(bundle: DeviceBundle) -> None:

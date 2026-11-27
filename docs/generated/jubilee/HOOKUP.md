@@ -43,7 +43,7 @@ Software `cli-device sys abort` sends M112 over a lock-free, out-of-band HTTP ch
 | `duet_real` | `duet_rrf` | YES | `abort_m112, abort_oob, axes_xyz, axes_xyzu, deck_labware, expert_gcode, rrf_object_model, tool_lock_u` | Real Jubilee over Duet/RRF Ethernet HTTP. Requires detect + read-only preflight before motion; M400 + object model idle completion barrier; lock-free M112 abort. |
 | `mujoco_twin` | `mujoco_twin` | no | `abort_oob, axes_xyz, axes_xyzu, collision_proxy, deck_labware, tool_lock_u` | Read-only wrapper around local CAD-backed MuJoCo twin (path via env/config). Full v1 Jubilee catalog. |
 | `grbl_sim` | `grbl_sim` | no | `abort_oob, axes_xyz, serial_gcode` | AutoDNA GRBL 1.1 emulator — motion subset ONLY. NOT a real Jubilee: no Duet object model, no tool lock, no T macros. |
-| `in_memory` | `in_memory` | no | `abort_oob, axes_xyz, axes_xyzu, deck_labware, expert_gcode, rrf_object_model, tool_lock_u` | In-memory fake adapter for Phase 0 contract, compiler, safety_kernel, daemon, and CLI closed-loop verification. |
+| `in_memory` | `in_memory` | no | `abort_oob, axes_xyz, axes_xyzu, deck_labware, expert_gcode, rrf_object_model, tool_lock_u` | In-memory fake adapter for offline contract, compiler, safety_kernel, daemon, and CLI closed-loop verification. |
 
 <a id="sec-ethernet-p2p"></a>
 ## Point-to-Point Ethernet Wiring (Official Default)

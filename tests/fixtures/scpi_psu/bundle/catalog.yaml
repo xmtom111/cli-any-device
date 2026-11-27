@@ -1,0 +1,61 @@
+device_id: scpi_psu
+version: "1.0.0"
+
+services:
+  - name: sys.detect
+    summary: Identify the supply over SCPI.
+    risk_class: R0_READ
+    postconditions: [detected]
+
+  - name: sys.status
+    summary: Read voltage and output state.
+    risk_class: R0_READ
+
+  - name: sys.preflight
+    summary: Check that the supply is detected and idle.
+    risk_class: R0_READ
+    preconditions: [detected]
+
+  - name: sys.abort
+    summary: Disable the output over an independent connection.
+    risk_class: R0_READ
+    bypasses_action_lock: true
+
+  - name: sys.reset_estop
+    summary: Clear the latch after inspection with the output disabled.
+    risk_class: R3_PHYSICAL_INIT
+    requires_confirm: true
+    preconditions: [detected]
+    postconditions: [not_estop_latched]
+
+  - name: instrument.read_probe
+    summary: Read temperature in degrees Celsius.
+    risk_class: R0_READ
+    args:
+      - {name: channel, type: int}
+    preconditions: [detected, not_estop_latched]
+    protocol:
+      query: "MEAS:TEMP? CH{channel}"
+      parse: float
+
+  - name: instrument.set_voltage
+    summary: Set the supply voltage.
+    risk_class: R1_CONFIG
+    args:
+      - {name: voltage_v, type: float, unit: V}
+    preconditions: [detected, not_estop_latched]
+    postconditions: [prop_set:voltage_v]
+    protocol:
+      command: "SOUR:VOLT {voltage_v}"
+      property: voltage_v
+      parse: float
+
+  - name: instrument.enable_output
+    summary: Enable the supply output.
+    risk_class: R2_MOTION
+    requires_confirm: true
+    preconditions: [detected, not_estop_latched]
+    postconditions: [prop_eq:output_enabled=true]
+    fail_safe: disable_output
+    protocol:
+      command: OUTP ON

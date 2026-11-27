@@ -112,6 +112,7 @@ services:
     fail_safe: "none"
     timeout_s: 5.0
     requires_confirm: false
+    confirm_if: ["state.deck != null"]
     bypasses_action_lock: false
     expert_only: false
 

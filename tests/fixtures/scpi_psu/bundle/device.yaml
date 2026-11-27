@@ -1,0 +1,50 @@
+device_id: scpi_psu
+display_name: OpenPSU-305
+version: "1.0.0"
+device_kind: power_supply
+review_status: verified
+
+safety_limits:
+  voltage_v:
+    min_value: 0
+    max_value: 30
+    unit: V
+    source: OpenPSU-305 fixture manual
+    verified: true
+  channel:
+    min_value: 1
+    max_value: 4
+    source: OpenPSU-305 fixture manual
+    verified: true
+
+hookup:
+  primary_interface: Ethernet TCP/SCPI
+  default_endpoint: tcp://127.0.0.1:5025
+  completion_semantics: Poll *OPC? until it returns 1.
+  estop_policy: Send OUTP OFF out of band and inspect the supply before reset.
+
+targets:
+  scpi_sim:
+    adapter_id: scpi_generic
+    is_real_hardware: false
+    default_endpoint: tcp://127.0.0.1:5025
+    capabilities: [tcp_scpi, abort_oob]
+    adapter_options: &scpi_options
+      detect_cmd: "*IDN?"
+      settled_cmd: "*OPC?"
+      abort_cmd: OUTP OFF
+      reset_cmd: OUTP OFF
+      poll_queries:
+        voltage_v: "SOUR:VOLT?"
+        output_enabled: "OUTP?"
+      poll_parsers:
+        voltage_v: float
+        output_enabled: bool
+      fail_safe_commands:
+        disable_output: OUTP OFF
+  hardware_real:
+    adapter_id: scpi_generic
+    is_real_hardware: true
+    default_endpoint: tcp://192.168.10.50:5025
+    capabilities: [tcp_scpi, abort_oob]
+    adapter_options: *scpi_options

@@ -1,16 +1,35 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "cli-any-device"
 version = "0.1.0"
 description = "Let AI drive all your devices — turn any open-source hardware into a safe, AI-callable CLI"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "CLI-Any-Device Contributors" }]
+keywords = ["hardware", "automation", "cli", "ai-agents", "scpi", "mcp"]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Hardware",
+    "Topic :: Utilities",
+]
 dependencies = [
     "PyYAML>=6.0",
     "click>=8.1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/xmtom111/cli-any-device"
+Repository = "https://github.com/xmtom111/cli-any-device"
+Issues = "https://github.com/xmtom111/cli-any-device/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -28,6 +47,24 @@ cli-device-d = "daemon.main:main"
 duet_rrf = "adapters.duet_rrf:create_adapter"
 mujoco_twin = "adapters.mujoco_twin:create_adapter"
 grbl_sim = "adapters.grbl_sim:create_adapter"
+scpi_generic = "adapters.scpi_generic:create_adapter"
+http_json = "adapters.http_json:create_adapter"
+moonraker_http = "adapters.moonraker_http:create_adapter"
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "adapter_spi",
+    "adapters",
+    "bundles",
+    "cli",
+    "compiler",
+    "core_types",
+    "daemon",
+    "docs",
+    "safety_kernel",
+    "skills",
+    "tests",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = [
@@ -39,6 +76,9 @@ packages = [
     "cli",
     "adapters",
 ]
+
+[tool.hatch.build.targets.wheel.force-include]
+"skills/cli-any-device-onboard/SKILL.md" = "cli/cli-any-device-onboard/SKILL.md"
 
 [tool.mypy]
 python_version = "3.11"
